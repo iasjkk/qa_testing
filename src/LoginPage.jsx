@@ -31,8 +31,8 @@ export default function LoginPage({ onLogin }) {
         <div className="login-brand">
           <div className="login-brand-icon">QA</div>
           <div>
-            <h1>Automation Testing</h1>
-            <p>Evaluation &amp; Scoring Platform</p>
+            <h1>Gulsha Audit</h1>
+            <p>Store Audit &amp; Scoring Platform</p>
           </div>
         </div>
         {error && <div className="login-alert error">{error}</div>}

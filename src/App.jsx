@@ -954,7 +954,7 @@ function ReviewPortal({ currentUser, currentRole, onBack, onLogout }) {
   return (
     <div className="app">
       <header className="app-header">
-        <div className="header-left"><h1>Review Tester Submissions</h1></div>
+        <div className="header-left"><h1>Review Staff Self Audit Submissions</h1></div>
         <div className="header-right">
           <button className="btn-secondary-sm" onClick={onBack}>← Portal</button>
           <ProfileMenu username={currentUser} onLogout={onLogout} />
@@ -1343,7 +1343,7 @@ function BrandTitle() {
     <div className="brand-title">
       <div className="brand-icon">QA</div>
       <div className="brand-text">
-        <span className="brand-main">Automation Testing</span>
+        <span className="brand-main">Gulsha Audit</span>
         <span className="brand-sub">Dashboard</span>
       </div>
     </div>
@@ -1655,7 +1655,7 @@ function ProfilePickerPortal({ mode, session, onPick, onCancel, onLogout }) {
   const [noAccess,         setNoAccess]         = useState(false);
   const role      = session.role ?? "tester";
   const isAdmin   = role === "admin";
-  const modeLabel = mode === "tester" ? "Tester Session" : "Automation Testing";
+  const modeLabel = mode === "tester" ? "Tester Session" : "Gulsha Audit";
 
   useEffect(() => {
     Promise.all([
@@ -1739,8 +1739,8 @@ function ProfilePickerPortal({ mode, session, onPick, onCancel, onLogout }) {
           {step === "product" && (
             <>
               <div className="portal-welcome" style={{ marginBottom: 24 }}>
-                <h2>Select Product</h2>
-                <p>Choose which product to test for this {modeLabel.toLowerCase()}.</p>
+                <h2>Select Store for Audit</h2>
+                <p>Choose which store to audit for this {modeLabel.toLowerCase()}.</p>
               </div>
               <div className="prod-picker-grid">
                 {products.map(p => (
@@ -1757,8 +1757,8 @@ function ProfilePickerPortal({ mode, session, onPick, onCancel, onLogout }) {
           {step === "profile" && (
             <>
               <div className="portal-welcome" style={{ marginBottom: 24 }}>
-                <h2>Select Testing Profile</h2>
-                <p>Choose which question set to use{selectedProduct ? ` for ${selectedProduct.name}` : ""}.</p>
+                <h2>Select audit type to be performed</h2>
+                <p>Choose which audit to be performed to use{selectedProduct ? ` for ${selectedProduct.name}` : ""}.</p>
               </div>
               {profiles.length === 0
                 ? <div className="tp-empty">
@@ -1883,7 +1883,7 @@ function ProductsPortal({ currentUser, onBack, onLogout }) {
       )}
       <header className="app-header">
         <div className="header-left">
-          <h1>Manage Products</h1>
+          <h1>Manage Stores</h1>
           <p className="header-sub">{products.length} product{products.length !== 1 ? "s" : ""} · assign access per user in Manage Accounts</p>
         </div>
         <div className="header-right">
@@ -1930,8 +1930,8 @@ const ROLE_LABELS = { admin: "Admin", reviewer: "Reviewer", tester: "Tester" };
 const ROLE_COLORS = { admin: "#4f86c6", reviewer: "#9b73c8", tester: "#4ab8c8" };
 const ROLE_DESC   = {
   admin:    "Full access — all portals including Manage Accounts",
-  reviewer: "Can review tester submissions and view all reports",
-  tester:   "Tester portal only — upload screenshots per session",
+  reviewer: "Can Review Staff Self Audit Submissions and view all reports",
+  tester:   "Staff Self Audit only — upload screenshots per session",
 };
 
 function AccountsPortal({ currentUser, onBack, onLogout }) {
@@ -2064,7 +2064,7 @@ function AccountsPortal({ currentUser, onBack, onLogout }) {
             <h3>Product Access — {accessModal.username}</h3>
             <p style={{ marginBottom: 12 }}>Select which products this user can test and see reports for.</p>
             {allProducts.length === 0
-              ? <p style={{ color: "#aaa", fontSize: 13 }}>No products created yet. Create products in Manage Products first.</p>
+              ? <p style={{ color: "#aaa", fontSize: 13 }}>No products created yet. Create products in Manage Stores first.</p>
               : <div className="prod-access-list">
                   {allProducts.map(p => (
                     <label key={p.id} className="prod-access-item">
@@ -2235,7 +2235,7 @@ function IdleScreen({ session, onStart, onNavigate, onLogout }) {
           {canReview && (
             <div className="portal-card">
               <div className="portal-card-icon">🖥️</div>
-              <h3>Automation Testing</h3>
+              <h3>Gulsha Audit</h3>
               <p>Full QA evaluation with scoring, notes, and screenshots.</p>
               <ul className="portal-features">
                 <li>Score each question (0–max marks)</li>
@@ -2243,12 +2243,12 @@ function IdleScreen({ session, onStart, onNavigate, onLogout }) {
                 <li>Upload or capture screenshots</li>
                 <li>12-hour session window</li>
               </ul>
-              <button className="btn-start" onClick={() => onStart("admin")}>Start Automation Testing</button>
+              <button className="btn-start" onClick={() => onStart("admin")}>Start Gulsha Audit</button>
             </div>
           )}
           <div className="portal-card portal-card-teal">
             <div className="portal-card-icon">📸</div>
-            <h3>Tester Portal</h3>
+            <h3>Staff Self Audit</h3>
             <p>Upload screenshots for each question — no scoring required.</p>
             <ul className="portal-features">
               <li>Upload or capture screenshot per question</li>
@@ -2268,7 +2268,7 @@ function IdleScreen({ session, onStart, onNavigate, onLogout }) {
                 <li>Add reviewer comments</li>
                 <li>Generate reviewed report</li>
               </ul>
-              <button className="btn-start btn-start-orange" onClick={() => onNavigate("review")}>Review Tester Submissions</button>
+              <button className="btn-start btn-start-orange" onClick={() => onNavigate("review")}>Review Staff Self Audit Submissions</button>
             </div>
           )}
           {(canReview || role === "tester") && (
@@ -2277,7 +2277,7 @@ function IdleScreen({ session, onStart, onNavigate, onLogout }) {
               <h3>All Reports</h3>
               <p>View all completed testing sessions and reviewed reports.</p>
               <ul className="portal-features">
-                <li>Automation testing reports</li>
+                <li>Gulsha Audit reports</li>
                 <li>Tester submissions with review status</li>
                 <li>Named by user, date and time</li>
               </ul>
@@ -2287,14 +2287,14 @@ function IdleScreen({ session, onStart, onNavigate, onLogout }) {
           {isAdmin && (
             <div className="portal-card portal-card-red">
               <div className="portal-card-icon">🏷️</div>
-              <h3>Manage Products</h3>
-              <p>Create and manage products (PE, PT, PL…) and assign user access.</p>
+              <h3>Manage Stores</h3>
+              <p>Create and Manage Stores (PE, PT, PL…) and assign user access.</p>
               <ul className="portal-features">
                 <li>Create PE, PT, PL and custom products</li>
                 <li>Assign product access per user</li>
                 <li>Testers &amp; reviewers see their products only</li>
               </ul>
-              <button className="btn-start btn-start-red" onClick={() => onNavigate("products")}>Manage Products</button>
+              <button className="btn-start btn-start-red" onClick={() => onNavigate("products")}>Manage Stores</button>
             </div>
           )}
           {isAdmin && (
@@ -2606,7 +2606,7 @@ export default function App() {
         {submitSuccess    && <SubmitSuccessModal isTester={submitSuccess.isTester} onBackToPortal={handleSubmitSuccessBack} onViewReports={handleSubmitSuccessReports} />}
         <header className="app-header">
           <div className="header-left">
-            <h1>Tester Portal</h1>
+            <h1>Staff Self Audit</h1>
             <p className="header-sub">Started: {fmtDateTime(session.testingStart)}</p>
           </div>
           <div className="header-right">
