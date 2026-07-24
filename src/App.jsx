@@ -338,6 +338,22 @@ function CameraModal({ onCapture, onClose }) {
     const ctx = canvas.getContext("2d");
     if (isFront) { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
     ctx.drawImage(video, 0, 0);
+    if (isFront) { ctx.setTransform(1, 0, 0, 1, 0, 0); }
+
+    // Watermark
+    const now      = new Date();
+    const stamp    = `${isFront ? "Front" : "Back"} | ${now.toLocaleString()}`;
+    const fontSize = Math.max(14, Math.round(canvas.width * 0.022));
+    const pad      = Math.round(fontSize * 0.6);
+    ctx.font        = `bold ${fontSize}px monospace`;
+    const textW     = ctx.measureText(stamp).width;
+    const boxX      = canvas.width  - textW - pad * 2 - 10;
+    const boxY      = canvas.height - fontSize - pad * 2 - 10;
+    ctx.fillStyle   = "rgba(0,0,0,0.45)";
+    ctx.fillRect(boxX, boxY, textW + pad * 2, fontSize + pad * 2);
+    ctx.fillStyle   = "#ffffff";
+    ctx.fillText(stamp, boxX + pad, boxY + pad + fontSize * 0.85);
+
     const base64 = canvas.toDataURL("image/jpeg", 0.92);
     const url    = URL.createObjectURL(dataURLtoBlob(base64));
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -348,7 +364,14 @@ function CameraModal({ onCapture, onClose }) {
     <div className="modal-overlay">
       <div className="camera-modal">
         <div className="camera-modal-header">
-          <h3>Webcam</h3>
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ verticalAlign: "middle", marginRight: 6 }}>
+              <circle cx="12" cy="12" r="3.5" fill="#FFD600"/>
+              <circle cx="12" cy="12" r="6.5" stroke="#FFD600" strokeWidth="1.5" fill="none" opacity="0.6"/>
+              <circle cx="12" cy="12" r="10" stroke="#FFD600" strokeWidth="1.2" fill="none" opacity="0.3"/>
+            </svg>
+            Live Photo
+          </h3>
           {!error && ready && (
             <button className="camera-switch-btn" onClick={switchCamera} title="Switch camera">
               🔄 {facing === "environment" ? "Front" : "Back"}
@@ -376,8 +399,7 @@ function CameraModal({ onCapture, onClose }) {
 function ScreenshotCell({ screenshot, onUpload, onDiscard, disabled, required }) {
   const [ddOpen,     setDdOpen]     = useState(false);
   const [showCamera, setShowCamera] = useState(false);
-  const ddRef        = useRef(null);
-  const liveInputRef = useRef(null);
+  const ddRef = useRef(null);
 
   useEffect(() => {
     const handler = (e) => { if (ddRef.current && !ddRef.current.contains(e.target)) setDdOpen(false); };
@@ -411,12 +433,8 @@ function ScreenshotCell({ screenshot, onUpload, onDiscard, disabled, required })
             📁 Upload Image
             <input type="file" accept="image/*" onChange={handleChange} hidden />
           </label>
-          <label className="shot-dd-item" onMouseDown={() => setDdOpen(false)}>
-            📷 Live Photo
-            <input ref={liveInputRef} type="file" accept="image/*" capture="environment" onChange={handleChange} hidden />
-          </label>
           <div className="shot-dd-item" onMouseDown={() => { setDdOpen(false); setShowCamera(true); }}>
-            🎥 Webcam
+            📷 Live Photo
           </div>
         </div>
       )}
@@ -2750,3 +2768,4 @@ export default function App() {
     </div>
   );
 }
+
