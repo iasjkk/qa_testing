@@ -374,53 +374,12 @@ function CameraModal({ onCapture, onClose }) {
 
 // ── ScreenshotCell ────────────────────────────────────────────────────────────
 function ScreenshotCell({ screenshot, onUpload, onDiscard, disabled, required }) {
-  const [ddOpen,     setDdOpen]     = useState(false);
   const [showCamera, setShowCamera] = useState(false);
-  const ddRef        = useRef(null);
-  const liveInputRef = useRef(null);
 
-  useEffect(() => {
-    const handler = (e) => { if (ddRef.current && !ddRef.current.contains(e.target)) setDdOpen(false); };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  const handleChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setDdOpen(false);
-    const [url, base64] = await Promise.all([
-      Promise.resolve(URL.createObjectURL(file)), fileToBase64(file),
-    ]);
-    onUpload({ url, base64, name: file.name });
-    e.target.value = "";
-  };
-
-  // Inline dropdown — never define components inside render
-  const shotDropdown = (
-    <div className="shot-dd-wrap" ref={ddRef}>
-      {screenshot
-        ? <button className="btn-upload small" onClick={() => setDdOpen(o => !o)}>Replace ▾</button>
-        : <button className={`btn-upload${required ? " required" : ""}`} onClick={() => setDdOpen(o => !o)}>
-            + Add {required && <span className="req-dot">*</span>} ▾
-          </button>
-      }
-      {ddOpen && (
-        <div className="shot-dropdown">
-          <label className="shot-dd-item">
-            📁 Upload Image
-            <input type="file" accept="image/*" onChange={handleChange} hidden />
-          </label>
-          <label className="shot-dd-item" onMouseDown={() => setDdOpen(false)}>
-            📷 Live Photo
-            <input ref={liveInputRef} type="file" accept="image/*" capture="environment" onChange={handleChange} hidden />
-          </label>
-          <div className="shot-dd-item" onMouseDown={() => { setDdOpen(false); setShowCamera(true); }}>
-            🎥 Webcam
-          </div>
-        </div>
-      )}
-    </div>
+  const shotBtn = (
+    <button className={`btn-upload${required ? " required" : ""}`} onClick={() => setShowCamera(true)}>
+      {screenshot ? "Replace" : <>{`+ Add`}{required && <span className="req-dot">*</span>}</>}
+    </button>
   );
 
   return (
@@ -447,7 +406,7 @@ function ScreenshotCell({ screenshot, onUpload, onDiscard, disabled, required })
         </div>
       ) : (
         <div className="screenshot-cell">
-          {disabled ? <span className="no-screenshot">—</span> : shotDropdown}
+          {disabled ? <span className="no-screenshot">—</span> : shotBtn}
         </div>
       )}
     </>
@@ -2750,3 +2709,4 @@ export default function App() {
     </div>
   );
 }
+
