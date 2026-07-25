@@ -410,7 +410,7 @@ function CameraModal({ onCapture, onClose }) {
 }
 
 // ── ScreenshotCell ────────────────────────────────────────────────────────────
-function ScreenshotCell({ screenshot, onUpload, onDiscard, disabled, required }) {
+function ScreenshotCell({ screenshot, onUpload, onDiscard, disabled, required, livePhotoOnly }) {
   const [ddOpen,     setDdOpen]     = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const ddRef = useRef(null);
@@ -441,7 +441,45 @@ function ScreenshotCell({ screenshot, onUpload, onDiscard, disabled, required })
     e.target.value = "";
   };
 
-  // Inline dropdown — never define components inside render
+  // When livePhotoOnly (tester mode): single button, no dropdown
+  if (livePhotoOnly) {
+    const shotButton = screenshot
+      ? <button className="btn-upload small" onClick={() => setShowCamera(true)}>📷 Replace</button>
+      : <button className={`btn-upload${required ? " required" : ""}`} onClick={() => setShowCamera(true)}>
+          📷 Live Photo {required && <span className="req-dot">*</span>}
+        </button>;
+    return (
+      <>
+        {showCamera && (
+          <CameraModal
+            onCapture={(s) => { setShowCamera(false); onUpload(s); }}
+            onClose={() => setShowCamera(false)}
+          />
+        )}
+        {screenshot ? (
+          <div className="screenshot-cell has-image">
+            <div className="screenshot-thumb-wrap">
+              <img src={screenshot.base64 ?? screenshot.url} alt={screenshot.name} className="screenshot-thumb"
+                onClick={() => window.open(screenshot.base64 ?? screenshot.url, "_blank")} title="Click to expand" />
+              {!disabled && (
+                <button className="btn-discard-x" onClick={onDiscard} title="Remove screenshot">✕</button>
+              )}
+            </div>
+            <div className="screenshot-info">
+              <span className="screenshot-name">{screenshot.name}</span>
+              {!disabled && shotButton}
+            </div>
+          </div>
+        ) : (
+          <div className="screenshot-cell">
+            {disabled ? <span className="no-screenshot">—</span> : shotButton}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // Admin / reviewer: dropdown with both Upload and Live Photo
   const shotDropdown = (
     <div className="shot-dd-wrap" ref={ddRef}>
       {screenshot
@@ -825,6 +863,7 @@ function ReviewPortal({ currentUser, currentRole, onBack, onLogout }) {
   const [userProducts, setUserProducts] = useState(null);
   const [selected,     setSelected]     = useState(null);
   const [reviewData,   setReviewData]   = useState([]);
+  const [reviewRows,   setReviewRows]   = useState([]);
   const [zoomImg,      setZoomImg]      = useState(null);
   const [sortCol,      setSortCol]      = useState("date");
   const [sortDir,      setSortDir]      = useState("desc");
@@ -846,6 +885,7 @@ function ReviewPortal({ currentUser, currentRole, onBack, onLogout }) {
 
   const openReview = (sub) => {
     setSelected(sub);
+    setReviewRows(sub.rows);
     setReviewData(sub.rows.map(r => ({
       id:      r.id,
       marks:   sub.review?.rows.find(rv => rv.id === r.id)?.marks   ?? null,
@@ -856,6 +896,7 @@ function ReviewPortal({ currentUser, currentRole, onBack, onLogout }) {
   const submitReview = async () => {
     const updated = {
       ...selected,
+      rows:   reviewRows,
       review: { reviewerUsername: currentUser, reviewedAt: Date.now(), rows: reviewData },
     };
     await dbSaveSubmission(updated);
@@ -909,15 +950,17 @@ function ReviewPortal({ currentUser, currentRole, onBack, onLogout }) {
                       <td><span className="std-badge" style={{ background:color }}>{row.standard}</span></td>
                       <td className="col-obs">{row.observation}</td>
                       <td>
-                        {(row.screenshot?.base64 ?? row.screenshot?.url)
-                          ? <div className="screenshot-thumb-wrap">
-                              <img src={row.screenshot.base64 ?? row.screenshot.url} className="screenshot-thumb review-img"
-                                onClick={() => setZoomImg({ src: row.screenshot.base64 ?? row.screenshot.url, alt: row.screenshot.name })}
-                                title="Click to zoom" />
-                              <div className="review-img-hint">Click to zoom</div>
-                            </div>
-                          : <span className="no-screenshot">No photo</span>
-                        }
+                        <ScreenshotCell
+                          screenshot={reviewRows[i]?.screenshot}
+                          onUpload={(s) => setReviewRows(p => p.map((r, j) => j === i ? { ...r, screenshot: s } : r))}
+                          onDiscard={() => setReviewRows(p => p.map((r, j) => j === i ? { ...r, screenshot: null } : r))}
+                        />
+                        {(reviewRows[i]?.screenshot?.base64 ?? reviewRows[i]?.screenshot?.url) && (
+                          <div className="review-img-hint" style={{ cursor: "pointer" }}
+                            onClick={() => setZoomImg({ src: reviewRows[i].screenshot.base64 ?? reviewRows[i].screenshot.url, alt: reviewRows[i].screenshot.name })}>
+                            🔍 Zoom
+                          </div>
+                        )}
                       </td>
                       <td>
                         <div className="score-row">
@@ -2685,6 +2728,7 @@ export default function App() {
                       <td className="col-obs">{row.observation}</td>
                       <td className="col-shot">
                         <ScreenshotCell screenshot={row.screenshot} required={!row.screenshot}
+                          livePhotoOnly={session.role !== "admin" && session.role !== "reviewer"}
                           onUpload={(s) => updateScreenshot(row.id, s)}
                           onDiscard={() => updateScreenshot(row.id, null)} />
                       </td>
