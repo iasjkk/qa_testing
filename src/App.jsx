@@ -13,6 +13,7 @@ import {
   dbGetUserProducts, dbSetUserProducts,
 } from "./db";
 import { driveEnabled, uploadPhoto, deleteSubmissionPhotos } from "./drive";
+// import logo from "./assets/logo.png";
 import "./App.css";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -107,8 +108,9 @@ function buildReportHTML(rows, session) {
   const rowsHTML = rows.map((row) => {
     const rowPct = row.possibleMarks && row.earnedScore !== null ? Math.round((row.earnedScore / row.possibleMarks) * 100) : null;
     const status = rowPct !== null ? (rowPct >= 80 ? "PASS" : rowPct < 50 ? "FAIL" : "WARN") : "N/A";
-    const imgHTML = row.screenshot?.url ?? row.screenshot?.base64
-      ? `<img src="${row.screenshot.url ?? row.screenshot.base64}" alt="${row.screenshot.name}" />`
+    const imgSrc  = row.screenshot?.base64 ?? row.screenshot?.url;
+    const imgHTML = imgSrc
+      ? `<img src="${imgSrc}" alt="${row.screenshot.name}" />`
       : `<span class="no-img">—</span>`;
     const color   = CATEGORY_COLORS[row.standard.split("-")[0]] ?? "#888";
     const noteHTML = row.evalNote?.trim()
@@ -290,10 +292,9 @@ function ScoreInput({ value, max, onChange, disabled }) {
 function CameraModal({ onCapture, onClose }) {
   const videoRef  = useRef(null);
   const streamRef = useRef(null);
-  const [ready,      setReady]      = useState(false);
-  const [error,      setError]      = useState(null);
-  const [facing,     setFacing]     = useState("environment");
-  const [uploading,  setUploading]  = useState(false);
+  const [ready,  setReady]  = useState(false);
+  const [error,  setError]  = useState(null);
+  const [facing, setFacing] = useState("environment");
 
   const startStream = (facingMode) => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -359,16 +360,17 @@ function CameraModal({ onCapture, onClose }) {
     const base64 = canvas.toDataURL("image/jpeg", 0.92);
     const name   = `photo_${Date.now()}.jpg`;
     streamRef.current?.getTracks().forEach((t) => t.stop());
+
+    // Always show the photo immediately with a local blob URL
+    const blobUrl = URL.createObjectURL(dataURLtoBlob(base64));
+    onCapture({ url: blobUrl, base64, name });
+
+    // If Drive is configured, upload in the background.
+    // Keep base64 for display (never expose the Drive URL in img src).
     if (driveEnabled) {
-      setUploading(true);
-      try {
-        const drive = await uploadPhoto(base64, name);
-        onCapture({ url: drive.url, name, driveFileId: drive.fileId });
-      } catch {
-        onCapture({ url: URL.createObjectURL(dataURLtoBlob(base64)), base64, name });
-      } finally { setUploading(false); }
-    } else {
-      onCapture({ url: URL.createObjectURL(dataURLtoBlob(base64)), base64, name });
+      uploadPhoto(base64, name)
+        .then(drive => onCapture({ url: null, base64, name, driveFileId: drive.fileId }))
+        .catch(() => {}); // keep blob URL if Drive upload fails
     }
   };
 
@@ -397,8 +399,8 @@ function CameraModal({ onCapture, onClose }) {
         <div className="modal-actions">
           <button className="btn-cancel" onClick={onClose}>Cancel</button>
           {!error && (
-            <button className="btn-confirm" onClick={capture} disabled={!ready || uploading}>
-              {uploading ? "Uploading…" : "📷 Capture"}
+            <button className="btn-confirm" onClick={capture} disabled={!ready}>
+              📷 Capture
             </button>
           )}
         </div>
@@ -411,7 +413,6 @@ function CameraModal({ onCapture, onClose }) {
 function ScreenshotCell({ screenshot, onUpload, onDiscard, disabled, required }) {
   const [ddOpen,     setDdOpen]     = useState(false);
   const [showCamera, setShowCamera] = useState(false);
-  const [uploading,  setUploading]  = useState(false);
   const ddRef = useRef(null);
 
   useEffect(() => {
@@ -426,16 +427,16 @@ function ScreenshotCell({ screenshot, onUpload, onDiscard, disabled, required })
     setDdOpen(false);
     const base64   = await fileToBase64(file);
     const localUrl = URL.createObjectURL(file);
+
+    // Show immediately
+    onUpload({ url: localUrl, base64, name: file.name });
+
+    // Upload to Drive in background.
+    // Keep base64 for display (never expose the Drive URL in img src).
     if (driveEnabled) {
-      setUploading(true);
-      try {
-        const drive = await uploadPhoto(base64, file.name);
-        onUpload({ url: drive.url, name: file.name, driveFileId: drive.fileId });
-      } catch {
-        onUpload({ url: localUrl, base64, name: file.name });
-      } finally { setUploading(false); }
-    } else {
-      onUpload({ url: localUrl, base64, name: file.name });
+      uploadPhoto(base64, file.name)
+        .then(drive => onUpload({ url: null, base64, name: file.name, driveFileId: drive.fileId }))
+        .catch(() => {}); // keep local URL if Drive fails
     }
     e.target.value = "";
   };
@@ -443,13 +444,11 @@ function ScreenshotCell({ screenshot, onUpload, onDiscard, disabled, required })
   // Inline dropdown — never define components inside render
   const shotDropdown = (
     <div className="shot-dd-wrap" ref={ddRef}>
-      {uploading
-        ? <button className="btn-upload small" disabled>Uploading…</button>
-        : screenshot
-          ? <button className="btn-upload small" onClick={() => setDdOpen(o => !o)}>Replace ▾</button>
-          : <button className={`btn-upload${required ? " required" : ""}`} onClick={() => setDdOpen(o => !o)}>
-              + Add {required && <span className="req-dot">*</span>} ▾
-            </button>
+      {screenshot
+        ? <button className="btn-upload small" onClick={() => setDdOpen(o => !o)}>Replace ▾</button>
+        : <button className={`btn-upload${required ? " required" : ""}`} onClick={() => setDdOpen(o => !o)}>
+            + Add {required && <span className="req-dot">*</span>} ▾
+          </button>
       }
       {ddOpen && (
         <div className="shot-dropdown">
@@ -476,8 +475,8 @@ function ScreenshotCell({ screenshot, onUpload, onDiscard, disabled, required })
       {screenshot ? (
         <div className="screenshot-cell has-image">
           <div className="screenshot-thumb-wrap">
-            <img src={screenshot.url} alt={screenshot.name} className="screenshot-thumb"
-              onClick={() => window.open(screenshot.url, "_blank")} title="Click to expand" />
+            <img src={screenshot.base64 ?? screenshot.url} alt={screenshot.name} className="screenshot-thumb"
+              onClick={() => window.open(screenshot.base64 ?? screenshot.url, "_blank")} title="Click to expand" />
             {!disabled && (
               <button className="btn-discard-x" onClick={onDiscard} title="Remove screenshot">✕</button>
             )}
@@ -561,8 +560,9 @@ function buildTesterReportHTML(rows, session) {
   const missing  = rows.length - uploaded;
   const rowsHTML = rows.map((row) => {
     const color  = CATEGORY_COLORS[row.standard.split("-")[0]] ?? "#888";
-    const imgHTML = row.screenshot?.url ?? row.screenshot?.base64
-      ? `<img src="${row.screenshot.url ?? row.screenshot.base64}" alt="${row.screenshot.name}" />`
+    const imgSrc2  = row.screenshot?.base64 ?? row.screenshot?.url;
+    const imgHTML = imgSrc2
+      ? `<img src="${imgSrc2}" alt="${row.screenshot.name}" />`
       : `<span class="no-img">Not uploaded</span>`;
     const status  = row.screenshot ? "DONE" : "MISSING";
     return `
@@ -650,7 +650,13 @@ function makeSubmission(type, username, session, rows) {
     endTime:     Date.now(),
     rows:        rows.map(r => ({
       ...r,
-      screenshot: r.screenshot ? { url: r.screenshot.url, base64: r.screenshot.base64 ?? null, name: r.screenshot.name, driveFileId: r.screenshot.driveFileId ?? null } : null,
+      screenshot: r.screenshot ? {
+        // Blob URLs are session-only; strip them so the display falls back to base64
+        url:         r.screenshot.url?.startsWith("blob:") ? null : (r.screenshot.url ?? null),
+        base64:      r.screenshot.base64 ?? null,
+        name:        r.screenshot.name,
+        driveFileId: r.screenshot.driveFileId ?? null,
+      } : null,
     })),
     review: null,
   };
@@ -661,8 +667,9 @@ function buildReviewedReportHTML(sub) {
   const rowsHTML = sub.rows.map((row) => {
     const color = CATEGORY_COLORS[row.standard.split("-")[0]] ?? "#888";
     const rv    = review.rows.find(r => r.id === row.id) ?? {};
-    const imgHTML = row.screenshot?.url ?? row.screenshot?.base64
-      ? `<img src="${row.screenshot.url ?? row.screenshot.base64}" alt="${row.screenshot.name}" />`
+    const imgSrc3 = row.screenshot?.base64 ?? row.screenshot?.url;
+    const imgHTML = imgSrc3
+      ? `<img src="${imgSrc3}" alt="${row.screenshot.name}" />`
       : `<span class="no-img">—</span>`;
     return `
       <tr>
@@ -902,10 +909,10 @@ function ReviewPortal({ currentUser, currentRole, onBack, onLogout }) {
                       <td><span className="std-badge" style={{ background:color }}>{row.standard}</span></td>
                       <td className="col-obs">{row.observation}</td>
                       <td>
-                        {row.screenshot?.url ?? row.screenshot?.base64
+                        {(row.screenshot?.base64 ?? row.screenshot?.url)
                           ? <div className="screenshot-thumb-wrap">
-                              <img src={row.screenshot.url ?? row.screenshot.base64} className="screenshot-thumb review-img"
-                                onClick={() => setZoomImg({ src: row.screenshot.url ?? row.screenshot.base64, alt: row.screenshot.name })}
+                              <img src={row.screenshot.base64 ?? row.screenshot.url} className="screenshot-thumb review-img"
+                                onClick={() => setZoomImg({ src: row.screenshot.base64 ?? row.screenshot.url, alt: row.screenshot.name })}
                                 title="Click to zoom" />
                               <div className="review-img-hint">Click to zoom</div>
                             </div>
@@ -1149,10 +1156,10 @@ function InlineReportViewer({ sub, currentUser, onBack, onLogout }) {
                       </td>
                     )}
                     <td>
-                      {row.screenshot?.url ?? row.screenshot?.base64
+                      {(row.screenshot?.base64 ?? row.screenshot?.url)
                         ? <div className="screenshot-thumb-wrap rv-thumb-wrap">
-                            <img src={row.screenshot.url ?? row.screenshot.base64} className="screenshot-thumb rv-thumb"
-                              onClick={() => setZoomImg({ src: row.screenshot.url ?? row.screenshot.base64, alt: row.screenshot.name })}
+                            <img src={row.screenshot.base64 ?? row.screenshot.url} className="screenshot-thumb rv-thumb"
+                              onClick={() => setZoomImg({ src: row.screenshot.base64 ?? row.screenshot.url, alt: row.screenshot.name })}
                               title="Click to zoom" />
                             <div className="review-img-hint">Click to zoom</div>
                           </div>
