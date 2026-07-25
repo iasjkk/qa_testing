@@ -2682,7 +2682,7 @@ export default function App() {
         {submitSuccess    && <SubmitSuccessModal isTester={submitSuccess.isTester} onBackToPortal={handleSubmitSuccessBack} onViewReports={handleSubmitSuccessReports} />}
         <header className="app-header">
           <div className="header-left">
-            <h1>Tester Portal</h1>
+            <h1>Staff-Led Audit</h1>
             <p className="header-sub">Started: {fmtDateTime(session.testingStart)}</p>
           </div>
           <div className="header-right">
