@@ -192,3 +192,155 @@ export async function dbSetUserProducts(username, productIds) {
   );
   if (error) throw error;
 }
+
+// ── Planner tasks ─────────────────────────────────────────────────────────────
+export async function dbGetTasks() {
+  if (USE_LOCAL) return local.getTasks();
+  const { data, error } = await supabase
+    .from("qa_tasks")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data.map(row => ({
+    id:          row.id,
+    title:       row.title,
+    description: row.description ?? "",
+    status:      row.status,
+    productId:   row.product_id   ?? null,
+    productName: row.product_name ?? null,
+    assignee:    row.assignee     ?? null,
+    createdBy:   row.created_by,
+    tags:        row.tags   ?? [],
+    images:      row.images ?? [],
+    createdAt:   row.created_at,
+    updatedAt:   row.updated_at,
+  }));
+}
+
+export async function dbSaveTask(task) {
+  if (USE_LOCAL) { local.saveTask(task); return; }
+  const { error } = await supabase.from("qa_tasks").upsert({
+    id:           task.id,
+    title:        task.title,
+    description:  task.description ?? "",
+    status:       task.status,
+    product_id:   task.productId   ?? null,
+    product_name: task.productName ?? null,
+    assignee:     task.assignee    ?? null,
+    created_by:   task.createdBy,
+    tags:         task.tags   ?? [],
+    images:       task.images ?? [],
+    created_at:   task.createdAt,
+    updated_at:   task.updatedAt,
+  });
+  if (error) throw error;
+}
+
+export async function dbDeleteTask(id) {
+  if (USE_LOCAL) { local.deleteTask(id); return; }
+  const { error } = await supabase.from("qa_tasks").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ── Tickets ───────────────────────────────────────────────────────────────────
+export async function dbGetTickets() {
+  if (USE_LOCAL) return local.getTickets();
+  const { data, error } = await supabase
+    .from("qa_tickets")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data.map(row => ({
+    id:          row.id,
+    title:       row.title,
+    description: row.description ?? "",
+    status:      row.status,
+    priority:    row.priority,
+    productId:   row.product_id   ?? null,
+    productName: row.product_name ?? null,
+    reporter:    row.reporter,
+    assignee:    row.assignee     ?? null,
+    images:      row.images ?? [],
+    createdAt:   row.created_at,
+    updatedAt:   row.updated_at,
+  }));
+}
+
+export async function dbSaveTicket(ticket) {
+  if (USE_LOCAL) { local.saveTicket(ticket); return; }
+  const { error } = await supabase.from("qa_tickets").upsert({
+    id:           ticket.id,
+    title:        ticket.title,
+    description:  ticket.description ?? "",
+    status:       ticket.status,
+    priority:     ticket.priority,
+    product_id:   ticket.productId   ?? null,
+    product_name: ticket.productName ?? null,
+    reporter:     ticket.reporter,
+    assignee:     ticket.assignee    ?? null,
+    images:       ticket.images ?? [],
+    created_at:   ticket.createdAt,
+    updated_at:   ticket.updatedAt,
+  });
+  if (error) throw error;
+}
+
+export async function dbDeleteTicket(id) {
+  if (USE_LOCAL) { local.deleteTicket(id); return; }
+  const { error } = await supabase.from("qa_tickets").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+export async function dbGetNotifications(username) {
+  if (USE_LOCAL) return local.getNotifications(username);
+  const { data, error } = await supabase
+    .from("qa_notifications")
+    .select("*")
+    .eq("to_username", username)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data.map(row => ({
+    id:         row.id,
+    toUsername: row.to_username,
+    message:    row.message,
+    type:       row.type       ?? null,
+    refId:      row.ref_id     ?? null,
+    refType:    row.ref_type   ?? null,
+    read:       row.read,
+    createdAt:  row.created_at,
+  }));
+}
+
+export async function dbSaveNotification(notif) {
+  if (USE_LOCAL) { local.saveNotification(notif); return; }
+  const { error } = await supabase.from("qa_notifications").upsert({
+    id:          notif.id,
+    to_username: notif.toUsername,
+    message:     notif.message,
+    type:        notif.type     ?? null,
+    ref_id:      notif.refId    ?? null,
+    ref_type:    notif.refType  ?? null,
+    read:        notif.read     ?? false,
+    created_at:  notif.createdAt,
+  });
+  if (error) throw error;
+}
+
+export async function dbMarkNotificationRead(id) {
+  if (USE_LOCAL) { local.markNotificationRead(id); return; }
+  const { error } = await supabase.from("qa_notifications").update({ read: true }).eq("id", id);
+  if (error) throw error;
+}
+
+export async function dbMarkAllNotificationsRead(username) {
+  if (USE_LOCAL) { local.markAllNotificationsRead(username); return; }
+  const { error } = await supabase.from("qa_notifications").update({ read: true }).eq("to_username", username);
+  if (error) throw error;
+}
+
+export async function dbClearNotifications(username) {
+  if (USE_LOCAL) { local.clearNotifications(username); return; }
+  const { error } = await supabase.from("qa_notifications").delete().eq("to_username", username);
+  if (error) throw error;
+}

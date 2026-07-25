@@ -122,6 +122,24 @@ export function clearScores(username) {
   localStorage.removeItem(SCORES_PFX + username);
 }
 
+// ── Active session questions (so profile questions survive page reload) ────────
+const SESSION_QS_KEY = "qa_session_questions";
+
+export function saveSessionQuestions(questions) {
+  localStorage.setItem(SESSION_QS_KEY, JSON.stringify(questions));
+}
+
+export function getSessionQuestions() {
+  try {
+    const data = JSON.parse(localStorage.getItem(SESSION_QS_KEY));
+    return Array.isArray(data) && data.length > 0 ? data : null;
+  } catch { return null; }
+}
+
+export function clearSessionQuestions() {
+  localStorage.removeItem(SESSION_QS_KEY);
+}
+
 // ── Testing profiles ──────────────────────────────────────────────────────────
 const PROFILES_KEY = "qa_profiles";
 
@@ -179,4 +197,123 @@ export function saveSubmission(submission) {
 export function deleteSubmission(id) {
   const all = getSubmissions().filter(s => s.id !== id);
   localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(all));
+}
+
+// ── Products ──────────────────────────────────────────────────────────────────
+const PRODUCTS_KEY = "qa_products";
+const DEFAULT_PRODUCTS = [
+  { id: "pe", name: "PE", description: "Product PE", createdAt: 0 },
+  { id: "pt", name: "PT", description: "Product PT", createdAt: 0 },
+  { id: "pl", name: "PL", description: "Product PL", createdAt: 0 },
+];
+
+export function getProducts() {
+  try {
+    const data = JSON.parse(localStorage.getItem(PRODUCTS_KEY));
+    if (Array.isArray(data) && data.length > 0) return data;
+    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(DEFAULT_PRODUCTS));
+    return DEFAULT_PRODUCTS;
+  } catch { return DEFAULT_PRODUCTS; }
+}
+
+export function saveProduct(product) {
+  const all = getProducts();
+  const idx = all.findIndex(p => p.id === product.id);
+  if (idx >= 0) all[idx] = product; else all.push(product);
+  localStorage.setItem(PRODUCTS_KEY, JSON.stringify(all));
+}
+
+export function deleteProduct(id) {
+  localStorage.setItem(PRODUCTS_KEY, JSON.stringify(getProducts().filter(p => p.id !== id)));
+  const pairs = getUserProductPairs().filter(p => p.product_id !== id);
+  localStorage.setItem(USER_PRODUCTS_KEY, JSON.stringify(pairs));
+}
+
+// ── User product access ───────────────────────────────────────────────────────
+const USER_PRODUCTS_KEY = "qa_user_products";
+
+function getUserProductPairs() {
+  try { return JSON.parse(localStorage.getItem(USER_PRODUCTS_KEY) || "[]"); }
+  catch { return []; }
+}
+
+export function getUserProducts(username) {
+  return getUserProductPairs().filter(p => p.username === username).map(p => p.product_id);
+}
+
+export function setUserProducts(username, productIds) {
+  const others = getUserProductPairs().filter(p => p.username !== username);
+  const mine   = productIds.map(pid => ({ username, product_id: pid }));
+  localStorage.setItem(USER_PRODUCTS_KEY, JSON.stringify([...others, ...mine]));
+}
+
+// ── Planner tasks ─────────────────────────────────────────────────────────────
+const TASKS_KEY = "qa_tasks";
+
+export function getTasks() {
+  try { return JSON.parse(localStorage.getItem(TASKS_KEY) || "[]"); }
+  catch { return []; }
+}
+
+export function saveTask(task) {
+  const all = getTasks();
+  const idx = all.findIndex(t => t.id === task.id);
+  if (idx >= 0) all[idx] = task; else all.push(task);
+  localStorage.setItem(TASKS_KEY, JSON.stringify(all));
+}
+
+export function deleteTask(id) {
+  localStorage.setItem(TASKS_KEY, JSON.stringify(getTasks().filter(t => t.id !== id)));
+}
+
+// ── Tickets ───────────────────────────────────────────────────────────────────
+const TICKETS_KEY = "qa_tickets";
+
+export function getTickets() {
+  try { return JSON.parse(localStorage.getItem(TICKETS_KEY) || "[]"); }
+  catch { return []; }
+}
+
+export function saveTicket(ticket) {
+  const all = getTickets();
+  const idx = all.findIndex(t => t.id === ticket.id);
+  if (idx >= 0) all[idx] = ticket; else all.push(ticket);
+  localStorage.setItem(TICKETS_KEY, JSON.stringify(all));
+}
+
+export function deleteTicket(id) {
+  localStorage.setItem(TICKETS_KEY, JSON.stringify(getTickets().filter(t => t.id !== id)));
+}
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+const NOTIFS_KEY = "qa_notifications";
+
+function getAllNotifications() {
+  try { return JSON.parse(localStorage.getItem(NOTIFS_KEY) || "[]"); }
+  catch { return []; }
+}
+
+export function getNotifications(username) {
+  return getAllNotifications().filter(n => n.toUsername === username);
+}
+
+export function saveNotification(notif) {
+  const all = getAllNotifications();
+  const idx = all.findIndex(n => n.id === notif.id);
+  if (idx >= 0) all[idx] = notif; else all.push(notif);
+  localStorage.setItem(NOTIFS_KEY, JSON.stringify(all));
+}
+
+export function markNotificationRead(id) {
+  const all = getAllNotifications().map(n => n.id === id ? { ...n, read: true } : n);
+  localStorage.setItem(NOTIFS_KEY, JSON.stringify(all));
+}
+
+export function markAllNotificationsRead(username) {
+  const all = getAllNotifications().map(n => n.toUsername === username ? { ...n, read: true } : n);
+  localStorage.setItem(NOTIFS_KEY, JSON.stringify(all));
+}
+
+export function clearNotifications(username) {
+  localStorage.setItem(NOTIFS_KEY, JSON.stringify(getAllNotifications().filter(n => n.toUsername !== username)));
 }

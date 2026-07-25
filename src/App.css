@@ -25,7 +25,7 @@ body {
   z-index: 100;
 }
 .header-left h1 { font-size: 1.25rem; font-weight: 700; }
-.header-sub { margin-top: 3px; color: rgba(212, 159, 79, 0.979); font-size: 12px; }
+.header-sub { margin-top: 3px; color: rgba(255,255,255,0.55); font-size: 12px; }
 
 /* ── Brand Title ── */
 .brand-title {
@@ -33,24 +33,24 @@ body {
 }
 .brand-icon {
   width: 44px; height: 44px; border-radius: 11px; flex-shrink: 0;
-  background: linear-gradient(135deg, #c64f63 0%, #e09a57 100%);
+  background: linear-gradient(135deg, #4f86c6 0%, #9b73c8 100%);
   color: #fff; font-size: 12px; font-weight: 900;
   display: flex; align-items: center; justify-content: center;
   letter-spacing: 1.5px;
   box-shadow: 0 4px 14px rgba(79,134,198,0.45), inset 0 1px 0 rgba(255,255,255,0.2);
 }
- .brand-logo { width: 44px; height: 44px; border-radius: 11px; object-fit: contain; flex-shrink: 0; }
+.brand-logo { width: 44px; height: 44px; border-radius: 11px; object-fit: contain; flex-shrink: 0; }
 .brand-text { display: flex; flex-direction: column; line-height: 1; }
 .brand-main {
   font-size: 1.25rem; font-weight: 800; letter-spacing: 0.2px;
-  background: linear-gradient(100deg, #ffffff 0%, #c77e2b 60%, #d4b8f4 100%);
+  background: linear-gradient(100deg, #ffffff 0%, #b8d4f4 60%, #d4b8f4 100%);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 .brand-sub {
   margin-top: 4px; font-size: 10px; font-weight: 600;
-  letter-spacing: 1px; 
-  color: rgba(253, 94, 20, 0.945);
+  letter-spacing: 3px; text-transform: uppercase;
+  color: rgba(255,255,255,0.45);
 }
 .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
@@ -610,7 +610,7 @@ body {
 }
 .modal {
   background: #fff; border-radius: 14px; padding: 32px;
-  max-width: 440px; width: 90%;
+  max-width: 900px; width: 90%;
   box-shadow: 0 20px 60px rgba(0,0,0,0.25);
   animation: modal-in 0.2s ease;
 }
@@ -1197,3 +1197,367 @@ body {
   transition: background 0.15s, color 0.15s;
 }
 .btn-danger-sm:hover { background: #e05c5c; color: #fff; }
+
+/* ── Portal card — Violet (Planner) ────────────────────────────────────────── */
+.portal-card-violet { border-top-color: #7c3aed; }
+.btn-start-violet {
+  background: linear-gradient(135deg, #7c3aed, #5b21b6) !important;
+  box-shadow: 0 4px 14px rgba(124,58,237,0.35) !important;
+}
+.btn-start-violet:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+
+/* ── Portal card — Amber (Tickets) ─────────────────────────────────────────── */
+.portal-card-amber { border-top-color: #d97706; }
+.btn-start-amber {
+  background: linear-gradient(135deg, #d97706, #b45309) !important;
+  box-shadow: 0 4px 14px rgba(217,119,6,0.35) !important;
+}
+.btn-start-amber:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+
+/* ── Kanban board ───────────────────────────────────────────────────────────── */
+/* ── Task / Ticket modal two-column layout ──────────────────────────────────── */
+.task-modal {
+  max-width: 900px !important;
+  width: 92% !important;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+/* Planner — violet theme */
+.task-modal--planner .task-modal-header {
+  background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+}
+.task-modal--planner .task-modal-right {
+  background: #f3f0ff;
+  border-left: 1px solid #e0d4ff;
+}
+.task-modal--planner .task-modal-right .login-label { color: #6040b0; }
+.task-modal--planner .task-modal-right .login-input:focus {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124,58,237,0.12);
+}
+
+/* Ticket — amber theme */
+.task-modal--ticket .task-modal-header {
+  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+}
+.task-modal--ticket .task-modal-right {
+  background: #fffbeb;
+  border-left: 1px solid #fde68a;
+}
+.task-modal--ticket .task-modal-right .login-label { color: #92400e; }
+.task-modal--ticket .task-modal-right .login-input:focus {
+  border-color: #d97706;
+  box-shadow: 0 0 0 3px rgba(217,119,6,0.12);
+}
+
+/* Shared header */
+.task-modal-header {
+  padding: 18px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.task-modal-header h3 {
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* Body */
+.task-modal-body { padding: 24px 28px; }
+.task-modal-grid {
+  display: grid;
+  grid-template-columns: 2fr 240px;
+  gap: 0;
+  align-items: stretch;
+}
+.task-modal-left {
+  display: flex;
+  flex-direction: column;
+  padding-right: 24px;
+}
+.task-modal-right {
+  display: flex;
+  flex-direction: column;
+  padding: 20px 20px;
+  border-radius: 0 0 14px 0;
+}
+@media (max-width: 680px) {
+  .task-modal-grid { grid-template-columns: 1fr; }
+  .task-modal-right { border-left: none; border-top: 1px solid #e0e4ea; padding: 16px 0 0; }
+}
+
+/* ── Kanban board ───────────────────────────────────────────────────────────── */
+.kanban-board {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  overflow-x: auto;
+  padding-bottom: 16px;
+}
+/* Column accent colors */
+.kanban-col[data-col="backlog"]     { background: #f0f4ff; }
+.kanban-col[data-col="in-progress"] { background: #fff8ed; }
+.kanban-col[data-col="in-review"]   { background: #f3f0ff; }
+.kanban-col[data-col="done"]        { background: #edfaf3; }
+
+.kanban-col[data-col="backlog"]     .kanban-col-header { border-bottom-color: #93b4f0; color: #3a5da8; }
+.kanban-col[data-col="in-progress"] .kanban-col-header { border-bottom-color: #f0b060; color: #a05a10; }
+.kanban-col[data-col="in-review"]   .kanban-col-header { border-bottom-color: #b49af0; color: #6040b0; }
+.kanban-col[data-col="done"]        .kanban-col-header { border-bottom-color: #60c890; color: #1a7040; }
+
+.kanban-col[data-col="backlog"]     .kanban-col-count { background: #d0deff; color: #3a5da8; }
+.kanban-col[data-col="in-progress"] .kanban-col-count { background: #ffe0b0; color: #a05a10; }
+.kanban-col[data-col="in-review"]   .kanban-col-count { background: #e0d4ff; color: #6040b0; }
+.kanban-col[data-col="done"]        .kanban-col-count { background: #c0f0d8; color: #1a7040; }
+
+.kanban-col {
+  flex: 1 1 300px;
+  border-radius: 12px;
+  padding: 12px;
+  min-height: 300px;
+}
+.kanban-col-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e0e4ea;
+}
+.kanban-col-count {
+  background: #e0e4ea;
+  color: #666;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 20px;
+  padding: 1px 8px;
+}
+.kanban-empty {
+  text-align: center;
+  color: #bbb;
+  font-size: 13px;
+  padding: 20px 0;
+}
+.kanban-card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+  transition: box-shadow 0.15s, transform 0.1s;
+}
+.kanban-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.12); transform: translateY(-1px); }
+.kanban-card-product {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  background: #e8f0fe;
+  color: #4f86c6;
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.kanban-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin-bottom: 4px;
+  line-height: 1.3;
+}
+.kanban-card-desc {
+  font-size: 12px;
+  color: #777;
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+.kanban-card-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.kanban-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.kanban-status-select {
+  flex: 1;
+  font-size: 11px;
+  padding: 4px 6px;
+  border: 1.5px solid #d0d4db;
+  border-radius: 6px;
+  outline: none;
+  cursor: pointer;
+  background: #f8f9fa;
+  color: #333;
+}
+.kanban-del-btn {
+  background: none;
+  border: 1.5px solid #e05c5c;
+  color: #e05c5c;
+  border-radius: 6px;
+  padding: 3px 7px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.kanban-del-btn:hover { background: #e05c5c; color: #fff; }
+
+/* ── Tag chips ──────────────────────────────────────────────────────────────── */
+.tag-chip-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+.tag-chip {
+  padding: 4px 10px;
+  background: #f0f2f5;
+  color: #555;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: all 0.15s;
+}
+.tag-chip.active {
+  background: #e8f0fe;
+  color: #4f86c6;
+  border-color: #4f86c6;
+}
+.tag-chip:hover { border-color: #aaa; }
+
+/* ── Ticket priority badges ─────────────────────────────────────────────────── */
+.priority-high   { background: #fde8e8; color: #c0392b; border-radius: 4px; padding: 2px 7px; font-size: 12px; font-weight: 600; }
+.priority-medium { background: #fff8e1; color: #d97706; border-radius: 4px; padding: 2px 7px; font-size: 12px; font-weight: 600; }
+.priority-low    { background: #e6f7ee; color: #1a6e3c; border-radius: 4px; padding: 2px 7px; font-size: 12px; font-weight: 600; }
+
+/* ── Status pill ────────────────────────────────────────────────────────────── */
+.status-pill {
+  background: #f0f2f5;
+  color: #555;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+/* ── Notification bell ──────────────────────────────────────────────────────── */
+.notif-bell-wrap {
+  position: relative;
+}
+.notif-bell-btn {
+  background: rgba(255,255,255,0.12);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 18px;
+  padding: 7px 10px;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s;
+}
+.notif-bell-btn:hover { background: rgba(255,255,255,0.22); }
+.notif-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: #e05c5c;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 1px 5px;
+  min-width: 16px;
+  text-align: center;
+  line-height: 1.4;
+}
+.notif-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 320px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  z-index: 1000;
+  overflow: hidden;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.notif-dd-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a1a2e;
+  border-bottom: 1px solid #f0f2f5;
+}
+.notif-mark-all {
+  background: none;
+  border: none;
+  color: #4f86c6;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+.notif-mark-all:hover { text-decoration: underline; }
+.notif-item {
+  padding: 10px 16px;
+  border-bottom: 1px solid #f5f7fa;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.notif-item:hover { background: #f8f9fa; }
+.notif-item.unread { background: #eef4ff; border-left: 3px solid #4f86c6; }
+.notif-item.unread:hover { background: #e3ecfd; }
+.notif-msg {
+  font-size: 13px;
+  color: #333;
+  line-height: 1.4;
+  margin-bottom: 3px;
+}
+.notif-time {
+  font-size: 11px;
+  color: #aaa;
+}
+.notif-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: #aaa;
+  font-size: 13px;
+}
+
+/* ── Primary action button (modal submit) ───────────────────────────────────── */
+.btn-primary {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #1a1a2e, #0f3460);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+  box-shadow: 0 3px 10px rgba(15,52,96,0.3);
+}
+.btn-primary:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
