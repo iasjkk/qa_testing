@@ -12,6 +12,7 @@ import {
   dbGetProducts, dbSaveProduct, dbDeleteProduct,
   dbGetUserProducts, dbSetUserProducts,
 } from "./db";
+import { driveEnabled, uploadPhoto, deleteSubmissionPhotos } from "./drive";
 import "./App.css";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -106,8 +107,8 @@ function buildReportHTML(rows, session) {
   const rowsHTML = rows.map((row) => {
     const rowPct = row.possibleMarks && row.earnedScore !== null ? Math.round((row.earnedScore / row.possibleMarks) * 100) : null;
     const status = rowPct !== null ? (rowPct >= 80 ? "PASS" : rowPct < 50 ? "FAIL" : "WARN") : "N/A";
-    const imgHTML = row.screenshot?.base64
-      ? `<img src="${row.screenshot.base64}" alt="${row.screenshot.name}" />`
+    const imgHTML = row.screenshot?.url ?? row.screenshot?.base64
+      ? `<img src="${row.screenshot.url ?? row.screenshot.base64}" alt="${row.screenshot.name}" />`
       : `<span class="no-img">—</span>`;
     const color   = CATEGORY_COLORS[row.standard.split("-")[0]] ?? "#888";
     const noteHTML = row.evalNote?.trim()
@@ -289,9 +290,10 @@ function ScoreInput({ value, max, onChange, disabled }) {
 function CameraModal({ onCapture, onClose }) {
   const videoRef  = useRef(null);
   const streamRef = useRef(null);
-  const [ready,    setReady]    = useState(false);
-  const [error,    setError]    = useState(null);
-  const [facing,   setFacing]   = useState("environment");
+  const [ready,      setReady]      = useState(false);
+  const [error,      setError]      = useState(null);
+  const [facing,     setFacing]     = useState("environment");
+  const [uploading,  setUploading]  = useState(false);
 
   const startStream = (facingMode) => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -329,7 +331,7 @@ function CameraModal({ onCapture, onClose }) {
     startStream(next);
   };
 
-  const capture = () => {
+  const capture = async () => {
     const video  = videoRef.current;
     const canvas = document.createElement("canvas");
     const isFront = facing === "user";
@@ -355,9 +357,19 @@ function CameraModal({ onCapture, onClose }) {
     ctx.fillText(stamp, boxX + pad, boxY + pad + fontSize * 0.85);
 
     const base64 = canvas.toDataURL("image/jpeg", 0.92);
-    const url    = URL.createObjectURL(dataURLtoBlob(base64));
+    const name   = `photo_${Date.now()}.jpg`;
     streamRef.current?.getTracks().forEach((t) => t.stop());
-    onCapture({ url, base64, name: `photo_${Date.now()}.jpg` });
+    if (driveEnabled) {
+      setUploading(true);
+      try {
+        const drive = await uploadPhoto(base64, name);
+        onCapture({ url: drive.url, name, driveFileId: drive.fileId });
+      } catch {
+        onCapture({ url: URL.createObjectURL(dataURLtoBlob(base64)), base64, name });
+      } finally { setUploading(false); }
+    } else {
+      onCapture({ url: URL.createObjectURL(dataURLtoBlob(base64)), base64, name });
+    }
   };
 
   return (
@@ -385,8 +397,8 @@ function CameraModal({ onCapture, onClose }) {
         <div className="modal-actions">
           <button className="btn-cancel" onClick={onClose}>Cancel</button>
           {!error && (
-            <button className="btn-confirm" onClick={capture} disabled={!ready}>
-              📷 Capture
+            <button className="btn-confirm" onClick={capture} disabled={!ready || uploading}>
+              {uploading ? "Uploading…" : "📷 Capture"}
             </button>
           )}
         </div>
@@ -399,6 +411,7 @@ function CameraModal({ onCapture, onClose }) {
 function ScreenshotCell({ screenshot, onUpload, onDiscard, disabled, required }) {
   const [ddOpen,     setDdOpen]     = useState(false);
   const [showCamera, setShowCamera] = useState(false);
+  const [uploading,  setUploading]  = useState(false);
   const ddRef = useRef(null);
 
   useEffect(() => {
@@ -411,21 +424,32 @@ function ScreenshotCell({ screenshot, onUpload, onDiscard, disabled, required })
     const file = e.target.files?.[0];
     if (!file) return;
     setDdOpen(false);
-    const [url, base64] = await Promise.all([
-      Promise.resolve(URL.createObjectURL(file)), fileToBase64(file),
-    ]);
-    onUpload({ url, base64, name: file.name });
+    const base64   = await fileToBase64(file);
+    const localUrl = URL.createObjectURL(file);
+    if (driveEnabled) {
+      setUploading(true);
+      try {
+        const drive = await uploadPhoto(base64, file.name);
+        onUpload({ url: drive.url, name: file.name, driveFileId: drive.fileId });
+      } catch {
+        onUpload({ url: localUrl, base64, name: file.name });
+      } finally { setUploading(false); }
+    } else {
+      onUpload({ url: localUrl, base64, name: file.name });
+    }
     e.target.value = "";
   };
 
   // Inline dropdown — never define components inside render
   const shotDropdown = (
     <div className="shot-dd-wrap" ref={ddRef}>
-      {screenshot
-        ? <button className="btn-upload small" onClick={() => setDdOpen(o => !o)}>Replace ▾</button>
-        : <button className={`btn-upload${required ? " required" : ""}`} onClick={() => setDdOpen(o => !o)}>
-            + Add {required && <span className="req-dot">*</span>} ▾
-          </button>
+      {uploading
+        ? <button className="btn-upload small" disabled>Uploading…</button>
+        : screenshot
+          ? <button className="btn-upload small" onClick={() => setDdOpen(o => !o)}>Replace ▾</button>
+          : <button className={`btn-upload${required ? " required" : ""}`} onClick={() => setDdOpen(o => !o)}>
+              + Add {required && <span className="req-dot">*</span>} ▾
+            </button>
       }
       {ddOpen && (
         <div className="shot-dropdown">
@@ -537,8 +561,8 @@ function buildTesterReportHTML(rows, session) {
   const missing  = rows.length - uploaded;
   const rowsHTML = rows.map((row) => {
     const color  = CATEGORY_COLORS[row.standard.split("-")[0]] ?? "#888";
-    const imgHTML = row.screenshot?.base64
-      ? `<img src="${row.screenshot.base64}" alt="${row.screenshot.name}" />`
+    const imgHTML = row.screenshot?.url ?? row.screenshot?.base64
+      ? `<img src="${row.screenshot.url ?? row.screenshot.base64}" alt="${row.screenshot.name}" />`
       : `<span class="no-img">Not uploaded</span>`;
     const status  = row.screenshot ? "DONE" : "MISSING";
     return `
@@ -626,7 +650,7 @@ function makeSubmission(type, username, session, rows) {
     endTime:     Date.now(),
     rows:        rows.map(r => ({
       ...r,
-      screenshot: r.screenshot ? { base64: r.screenshot.base64, name: r.screenshot.name } : null,
+      screenshot: r.screenshot ? { url: r.screenshot.url, base64: r.screenshot.base64 ?? null, name: r.screenshot.name, driveFileId: r.screenshot.driveFileId ?? null } : null,
     })),
     review: null,
   };
@@ -637,8 +661,8 @@ function buildReviewedReportHTML(sub) {
   const rowsHTML = sub.rows.map((row) => {
     const color = CATEGORY_COLORS[row.standard.split("-")[0]] ?? "#888";
     const rv    = review.rows.find(r => r.id === row.id) ?? {};
-    const imgHTML = row.screenshot?.base64
-      ? `<img src="${row.screenshot.base64}" alt="${row.screenshot.name}" />`
+    const imgHTML = row.screenshot?.url ?? row.screenshot?.base64
+      ? `<img src="${row.screenshot.url ?? row.screenshot.base64}" alt="${row.screenshot.name}" />`
       : `<span class="no-img">—</span>`;
     return `
       <tr>
@@ -878,10 +902,10 @@ function ReviewPortal({ currentUser, currentRole, onBack, onLogout }) {
                       <td><span className="std-badge" style={{ background:color }}>{row.standard}</span></td>
                       <td className="col-obs">{row.observation}</td>
                       <td>
-                        {row.screenshot?.base64
+                        {row.screenshot?.url ?? row.screenshot?.base64
                           ? <div className="screenshot-thumb-wrap">
-                              <img src={row.screenshot.base64} className="screenshot-thumb review-img"
-                                onClick={() => setZoomImg({ src: row.screenshot.base64, alt: row.screenshot.name })}
+                              <img src={row.screenshot.url ?? row.screenshot.base64} className="screenshot-thumb review-img"
+                                onClick={() => setZoomImg({ src: row.screenshot.url ?? row.screenshot.base64, alt: row.screenshot.name })}
                                 title="Click to zoom" />
                               <div className="review-img-hint">Click to zoom</div>
                             </div>
@@ -954,7 +978,7 @@ function ReviewPortal({ currentUser, currentRole, onBack, onLogout }) {
   return (
     <div className="app">
       <header className="app-header">
-        <div className="header-left"><h1>Review Staff Self Audit Submissions</h1></div>
+        <div className="header-left"><h1>Review Tester Submissions</h1></div>
         <div className="header-right">
           <button className="btn-secondary-sm" onClick={onBack}>← Portal</button>
           <ProfileMenu username={currentUser} onLogout={onLogout} />
@@ -1125,10 +1149,10 @@ function InlineReportViewer({ sub, currentUser, onBack, onLogout }) {
                       </td>
                     )}
                     <td>
-                      {row.screenshot?.base64
+                      {row.screenshot?.url ?? row.screenshot?.base64
                         ? <div className="screenshot-thumb-wrap rv-thumb-wrap">
-                            <img src={row.screenshot.base64} className="screenshot-thumb rv-thumb"
-                              onClick={() => setZoomImg({ src: row.screenshot.base64, alt: row.screenshot.name })}
+                            <img src={row.screenshot.url ?? row.screenshot.base64} className="screenshot-thumb rv-thumb"
+                              onClick={() => setZoomImg({ src: row.screenshot.url ?? row.screenshot.base64, alt: row.screenshot.name })}
                               title="Click to zoom" />
                             <div className="review-img-hint">Click to zoom</div>
                           </div>
@@ -1207,6 +1231,7 @@ function ReportsPortal({ currentUser, currentRole, onBack, onLogout }) {
   }, []);
 
   const handleDelete = async () => {
+    deleteSubmissionPhotos(deleteConfirm);
     await dbDeleteSubmission(deleteConfirm.id);
     setAllSubs(prev => prev.filter(s => s.id !== deleteConfirm.id));
     setDeleteConfirm(null);
@@ -1343,7 +1368,7 @@ function BrandTitle() {
     <div className="brand-title">
       <div className="brand-icon">QA</div>
       <div className="brand-text">
-        <span className="brand-main">Gulsha Audit</span>
+        <span className="brand-main">Automation Testing</span>
         <span className="brand-sub">Dashboard</span>
       </div>
     </div>
@@ -1655,7 +1680,7 @@ function ProfilePickerPortal({ mode, session, onPick, onCancel, onLogout }) {
   const [noAccess,         setNoAccess]         = useState(false);
   const role      = session.role ?? "tester";
   const isAdmin   = role === "admin";
-  const modeLabel = mode === "tester" ? "Tester Session" : "Gulsha Audit";
+  const modeLabel = mode === "tester" ? "Tester Session" : "Automation Testing";
 
   useEffect(() => {
     Promise.all([
@@ -1739,8 +1764,8 @@ function ProfilePickerPortal({ mode, session, onPick, onCancel, onLogout }) {
           {step === "product" && (
             <>
               <div className="portal-welcome" style={{ marginBottom: 24 }}>
-                <h2>Select Store for Audit</h2>
-                <p>Choose which store to audit for this {modeLabel.toLowerCase()}.</p>
+                <h2>Select Product</h2>
+                <p>Choose which product to test for this {modeLabel.toLowerCase()}.</p>
               </div>
               <div className="prod-picker-grid">
                 {products.map(p => (
@@ -1757,8 +1782,8 @@ function ProfilePickerPortal({ mode, session, onPick, onCancel, onLogout }) {
           {step === "profile" && (
             <>
               <div className="portal-welcome" style={{ marginBottom: 24 }}>
-                <h2>Select audit type to be performed</h2>
-                <p>Choose which audit to be performed to use{selectedProduct ? ` for ${selectedProduct.name}` : ""}.</p>
+                <h2>Select Testing Profile</h2>
+                <p>Choose which question set to use{selectedProduct ? ` for ${selectedProduct.name}` : ""}.</p>
               </div>
               {profiles.length === 0
                 ? <div className="tp-empty">
@@ -1883,7 +1908,7 @@ function ProductsPortal({ currentUser, onBack, onLogout }) {
       )}
       <header className="app-header">
         <div className="header-left">
-          <h1>Manage Stores</h1>
+          <h1>Manage Products</h1>
           <p className="header-sub">{products.length} product{products.length !== 1 ? "s" : ""} · assign access per user in Manage Accounts</p>
         </div>
         <div className="header-right">
@@ -1930,8 +1955,8 @@ const ROLE_LABELS = { admin: "Admin", reviewer: "Reviewer", tester: "Tester" };
 const ROLE_COLORS = { admin: "#4f86c6", reviewer: "#9b73c8", tester: "#4ab8c8" };
 const ROLE_DESC   = {
   admin:    "Full access — all portals including Manage Accounts",
-  reviewer: "Can Review Staff Self Audit Submissions and view all reports",
-  tester:   "Staff Self Audit only — upload screenshots per session",
+  reviewer: "Can review tester submissions and view all reports",
+  tester:   "Tester portal only — upload screenshots per session",
 };
 
 function AccountsPortal({ currentUser, onBack, onLogout }) {
@@ -2064,7 +2089,7 @@ function AccountsPortal({ currentUser, onBack, onLogout }) {
             <h3>Product Access — {accessModal.username}</h3>
             <p style={{ marginBottom: 12 }}>Select which products this user can test and see reports for.</p>
             {allProducts.length === 0
-              ? <p style={{ color: "#aaa", fontSize: 13 }}>No products created yet. Create products in Manage Stores first.</p>
+              ? <p style={{ color: "#aaa", fontSize: 13 }}>No products created yet. Create products in Manage Products first.</p>
               : <div className="prod-access-list">
                   {allProducts.map(p => (
                     <label key={p.id} className="prod-access-item">
@@ -2235,7 +2260,7 @@ function IdleScreen({ session, onStart, onNavigate, onLogout }) {
           {canReview && (
             <div className="portal-card">
               <div className="portal-card-icon">🖥️</div>
-              <h3>Gulsha Audit</h3>
+              <h3>Automation Testing</h3>
               <p>Full QA evaluation with scoring, notes, and screenshots.</p>
               <ul className="portal-features">
                 <li>Score each question (0–max marks)</li>
@@ -2243,12 +2268,12 @@ function IdleScreen({ session, onStart, onNavigate, onLogout }) {
                 <li>Upload or capture screenshots</li>
                 <li>12-hour session window</li>
               </ul>
-              <button className="btn-start" onClick={() => onStart("admin")}>Start Gulsha Audit</button>
+              <button className="btn-start" onClick={() => onStart("admin")}>Start Automation Testing</button>
             </div>
           )}
           <div className="portal-card portal-card-teal">
             <div className="portal-card-icon">📸</div>
-            <h3>Staff Self Audit</h3>
+            <h3>Tester Portal</h3>
             <p>Upload screenshots for each question — no scoring required.</p>
             <ul className="portal-features">
               <li>Upload or capture screenshot per question</li>
@@ -2268,7 +2293,7 @@ function IdleScreen({ session, onStart, onNavigate, onLogout }) {
                 <li>Add reviewer comments</li>
                 <li>Generate reviewed report</li>
               </ul>
-              <button className="btn-start btn-start-orange" onClick={() => onNavigate("review")}>Review Staff Self Audit Submissions</button>
+              <button className="btn-start btn-start-orange" onClick={() => onNavigate("review")}>Review Tester Submissions</button>
             </div>
           )}
           {(canReview || role === "tester") && (
@@ -2277,7 +2302,7 @@ function IdleScreen({ session, onStart, onNavigate, onLogout }) {
               <h3>All Reports</h3>
               <p>View all completed testing sessions and reviewed reports.</p>
               <ul className="portal-features">
-                <li>Gulsha Audit reports</li>
+                <li>Automation testing reports</li>
                 <li>Tester submissions with review status</li>
                 <li>Named by user, date and time</li>
               </ul>
@@ -2287,14 +2312,14 @@ function IdleScreen({ session, onStart, onNavigate, onLogout }) {
           {isAdmin && (
             <div className="portal-card portal-card-red">
               <div className="portal-card-icon">🏷️</div>
-              <h3>Manage Stores</h3>
-              <p>Create and Manage Stores (PE, PT, PL…) and assign user access.</p>
+              <h3>Manage Products</h3>
+              <p>Create and manage products (PE, PT, PL…) and assign user access.</p>
               <ul className="portal-features">
                 <li>Create PE, PT, PL and custom products</li>
                 <li>Assign product access per user</li>
                 <li>Testers &amp; reviewers see their products only</li>
               </ul>
-              <button className="btn-start btn-start-red" onClick={() => onNavigate("products")}>Manage Stores</button>
+              <button className="btn-start btn-start-red" onClick={() => onNavigate("products")}>Manage Products</button>
             </div>
           )}
           {isAdmin && (
@@ -2434,9 +2459,10 @@ export default function App() {
       const stale = subs.filter(s =>
         s.endTime < cutoff && s.rows?.some(r => r.screenshot)
       );
-      stale.forEach(s =>
-        dbSaveSubmission({ ...s, rows: s.rows.map(r => ({ ...r, screenshot: null })) })
-      );
+      stale.forEach(s => {
+        deleteSubmissionPhotos(s);
+        dbSaveSubmission({ ...s, rows: s.rows.map(r => ({ ...r, screenshot: null })) });
+      });
     }).catch(() => {});
   }, []);
 
@@ -2606,7 +2632,7 @@ export default function App() {
         {submitSuccess    && <SubmitSuccessModal isTester={submitSuccess.isTester} onBackToPortal={handleSubmitSuccessBack} onViewReports={handleSubmitSuccessReports} />}
         <header className="app-header">
           <div className="header-left">
-            <h1>Staff Self Audit</h1>
+            <h1>Tester Portal</h1>
             <p className="header-sub">Started: {fmtDateTime(session.testingStart)}</p>
           </div>
           <div className="header-right">
