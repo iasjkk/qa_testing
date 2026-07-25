@@ -26,9 +26,12 @@ jobs:
       - run: npm install
       - run: npm run build
         env:
-          VITE_USE_LOCAL: false
+          # VITE_USE_LOCAL: false
+          VITE_DB_BACKEND: ${{ secrets.VITE_DB_BACKEND }}
+          VITE_PHOTO_BACKEND: ${{ secrets.VITE_PHOTO_BACKEND }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_DRIVE_SCRIPT_URL: ${{ secrets.VITE_DRIVE_SCRIPT_URL }}
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
         with:
