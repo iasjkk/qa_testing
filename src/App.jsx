@@ -13,7 +13,7 @@ import {
   dbGetUserProducts, dbSetUserProducts,
 } from "./db";
 import { driveEnabled, uploadPhoto, deleteSubmissionPhotos } from "./drive";
-// import logo from "./assets/logo.png";
+import logo from "./assets/logo.png";
 import "./App.css";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -1416,10 +1416,10 @@ function ReportsPortal({ currentUser, currentRole, onBack, onLogout }) {
 function BrandTitle() {
   return (
     <div className="brand-title">
-      <div className="brand-icon">QA</div>
+      <img src={logo} alt="Logo" className="brand-logo" />
       <div className="brand-text">
         <span className="brand-main">Gulsha</span>
-        <span className="brand-sub">Impressions By Swati</span>
+        <span className="brand-sub"> Impressions By Swati</span>
       </div>
     </div>
   );
