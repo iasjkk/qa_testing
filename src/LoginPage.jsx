@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { dbLogin } from "./db";
 import { saveSessionFromDB } from "./auth";
+import logo from "./assets/login_logo.png";
 import "./LoginPage.css";
 
 export default function LoginPage({ onLogin }) {
@@ -29,11 +30,13 @@ export default function LoginPage({ onLogin }) {
     <div className="login-page">
       <div className="login-card">
         <div className="login-brand">
-          <div className="login-brand-icon">QA</div>
-          <div>
-            <h1>Gulsha Audit</h1>
-            <p>Store Audit &amp; Scoring Platform</p>
-          </div>
+          <img src={logo} alt="logo" className="login-brand-logo" />
+          {/* <div className="login-brand-icon">QA</div> */}
+            {/* <div className="logo">
+              <h1>Gulsha</h1>
+              <p>Impressions by Swati</p>
+            </div> */}
+
         </div>
         {error && <div className="login-alert error">{error}</div>}
         <form className="login-form" onSubmit={handleLogin} autoComplete="off">
