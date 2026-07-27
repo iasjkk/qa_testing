@@ -512,7 +512,7 @@ function CameraModal({ onCapture, onClose }) {
 }
 
 // ── ScreenshotCell ────────────────────────────────────────────────────────────
-function ScreenshotCell({ screenshot, onUpload, onDiscard, disabled, required, livePhotoOnly }) {
+function ScreenshotCell({ screenshot, onUpload, onDiscard, disabled, required, livePhotoOnly, onZoom }) {
   const [ddOpen,     setDdOpen]     = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const ddRef = useRef(null);
@@ -562,7 +562,8 @@ function ScreenshotCell({ screenshot, onUpload, onDiscard, disabled, required, l
           <div className="screenshot-cell has-image">
             <div className="screenshot-thumb-wrap">
               <img src={screenshot.base64 ?? screenshot.url} alt={screenshot.name} className="screenshot-thumb"
-                onClick={() => window.open(screenshot.base64 ?? screenshot.url, "_blank")} title="Click to expand" />
+                onClick={() => onZoom ? onZoom(screenshot) : window.open(screenshot.base64 ?? screenshot.url, "_blank")}
+                title={onZoom ? "Click to zoom" : "Click to expand"} style={{ cursor: "pointer" }} />
               {!disabled && (
                 <button className="btn-discard-x" onClick={onDiscard} title="Remove screenshot">✕</button>
               )}
@@ -616,7 +617,8 @@ function ScreenshotCell({ screenshot, onUpload, onDiscard, disabled, required, l
         <div className="screenshot-cell has-image">
           <div className="screenshot-thumb-wrap">
             <img src={screenshot.base64 ?? screenshot.url} alt={screenshot.name} className="screenshot-thumb"
-              onClick={() => window.open(screenshot.base64 ?? screenshot.url, "_blank")} title="Click to expand" />
+              onClick={() => onZoom ? onZoom(screenshot) : window.open(screenshot.base64 ?? screenshot.url, "_blank")}
+              title={onZoom ? "Click to zoom" : "Click to expand"} style={{ cursor: "pointer" }} />
             {!disabled && (
               <button className="btn-discard-x" onClick={onDiscard} title="Remove screenshot">✕</button>
             )}
@@ -755,7 +757,7 @@ function buildTesterReportHTML(rows, session) {
   <div class="card re"><div class="v">${missing}</div><div class="l">Missing</div></div>
   <div class="card or"><div class="v">${((uploaded/rows.length)*100).toFixed(0)}%</div><div class="l">Completion</div></div>
 </div>
-<h2>Question live phtotos</h2>
+<h2>Question Screenshots</h2>
 <table>
   <thead><tr><th>#</th><th>Standard</th><th>Observation</th><th>Status</th><th>Screenshot</th></tr></thead>
   <tbody>${rowsHTML}</tbody>
@@ -1056,13 +1058,8 @@ function ReviewPortal({ currentUser, currentRole, onBack, onLogout, onNavigate }
                           screenshot={reviewRows[i]?.screenshot}
                           onUpload={(s) => setReviewRows(p => p.map((r, j) => j === i ? { ...r, screenshot: s } : r))}
                           onDiscard={() => setReviewRows(p => p.map((r, j) => j === i ? { ...r, screenshot: null } : r))}
+                          onZoom={(s) => setZoomImg({ src: s.base64 ?? s.url, alt: s.name })}
                         />
-                        {(reviewRows[i]?.screenshot?.base64 ?? reviewRows[i]?.screenshot?.url) && (
-                          <div className="review-img-hint" style={{ cursor: "pointer" }}
-                            onClick={() => setZoomImg({ src: reviewRows[i].screenshot.base64 ?? reviewRows[i].screenshot.url, alt: reviewRows[i].screenshot.name })}>
-                            🔍 Zoom
-                          </div>
-                        )}
                       </td>
                       <td>
                         <div className="score-row">
@@ -1194,7 +1191,7 @@ function downloadReportFile(html, filename) {
 }
 
 // ── InlineReportViewer ────────────────────────────────────────────────────────
-function InlineReportViewer({ sub, currentUser, onBack, onLogout }) {
+function InlineReportViewer({ sub, currentUser, currentRole, onBack, onLogout }) {
   const [zoomImg,     setZoomImg]     = useState(null);
   const [showReview,  setShowReview]  = useState(false);
   const sess = { username: sub.username, testingStart: sub.startTime, testingEnd: sub.endTime };
@@ -1391,7 +1388,7 @@ function ReportsPortal({ currentUser, currentRole, onBack, onLogout, onNavigate 
   };
 
   if (viewingSub) {
-    return <InlineReportViewer sub={viewingSub} currentUser={currentUser}
+    return <InlineReportViewer sub={viewingSub} currentUser={currentUser} currentRole={currentRole}
       onBack={() => setViewingSub(null)} onLogout={onLogout} />;
   }
 
@@ -3048,10 +3045,7 @@ function TicketsPortal({ currentUser, currentRole, onBack, onLogout, onNavigate 
     createdAt: Date.now(), updatedAt: Date.now(), dueDate: null, level: "III",
   }});
 
-  const openEdit = (ticket) => {
-    if (!isAdmin && currentRole === "tester" && ticket.reporter !== currentUser) return;
-    setModal({ mode: "edit", ticket: { ...ticket } });
-  };
+  const openEdit = (ticket) => setModal({ mode: "edit", ticket: { ...ticket } });
 
   const handleSave = (ticket) => {
     const orig = tickets.find(t => t.id === ticket.id);
@@ -3105,7 +3099,7 @@ function TicketsPortal({ currentUser, currentRole, onBack, onLogout, onNavigate 
 
   const visible = tickets.filter(t => {
     if (isAdmin ? false : isReviewer ? t.level === "I" : t.level !== "III") return false;
-    if (!isAdmin && !isReviewer && t.reporter !== currentUser) return false;
+    if (!isAdmin && !isReviewer && t.reporter !== currentUser && t.assignee !== currentUser) return false;
     if (!isAdmin && testerProducts !== null && t.productId && !testerProducts.includes(t.productId)) return false;
     if (filterSt !== "all" && t.status !== filterSt) return false;
     if (filterPr !== "all" && t.priority !== filterPr) return false;
@@ -3222,7 +3216,7 @@ function TicketsPortal({ currentUser, currentRole, onBack, onLogout, onNavigate 
                       : "—"}
                   </td>
                   <td>
-                    {(isAdmin || isReviewer || t.reporter === currentUser) &&
+                    {(isAdmin || isReviewer || t.reporter === currentUser || t.assignee === currentUser) &&
                       <button className="btn-view-report sm" onClick={() => openEdit(t)}>Edit</button>}
                     {isAdmin &&
                       <button className="btn-danger-outline sm" style={{ marginLeft: 4 }} onClick={() => setDeleteId(t.id)}>Del</button>}
@@ -3479,8 +3473,8 @@ function IdleScreen({ session, onStart, onNavigate, onLogout }) {
           {(canReview || role === "tester") && (
             <div className="portal-card portal-card-purple">
               <div className="portal-card-icon">📋</div>
-              <h3>All Audit Reports</h3>
-              <p>View all completed audit sessions and reviewed/audit reports.</p>
+              <h3>All Reports</h3>
+              <p>View all completed testing sessions and reviewed reports.</p>
               <ul className="portal-features">
                 <li>Automation testing reports</li>
                 <li>Tester submissions with review status</li>
