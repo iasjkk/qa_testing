@@ -2888,9 +2888,9 @@ function TaskModal({ task: initTask, mode, currentUser, currentRole, products, a
                     return { ...t, level: newLevel, assignee: roleOk ? t.assignee : null, productId: roleOk ? t.productId : null, productName: roleOk ? t.productName : null };
                   });
                 }}>
-                {isAdmin && <option value="I">Level I (Admin)</option>}
-                {(isAdmin || isReviewer) && <option value="II">Level II (Reviewer)</option>}
-                <option value="III">Level III (Tester)</option>
+                {isAdmin && <option value="I">Level I (Administration)</option>}
+                {(isAdmin || isReviewer) && <option value="II">Level II (Manager)</option>}
+                <option value="III">Level III (Staff)</option>
               </select>
               <label className="login-label" style={{ marginTop: 12 }}>Ticket Type *</label>
               <select className="login-input" value={task.label ?? "once"}
