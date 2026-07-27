@@ -1,5 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════
 -- Run this ENTIRE script once in Supabase → SQL Editor → New query
+-- Safe to re-run on an existing database (all statements are idempotent)
 -- ═══════════════════════════════════════════════════════════════════
 
 -- ── Users ─────────────────────────────────────────────────────────
@@ -58,12 +59,91 @@ CREATE TABLE IF NOT EXISTS public.qa_user_products (
   PRIMARY KEY (username, product_id)
 );
 
--- ── Disable RLS ───────────────────────────────────────────────────
+-- ── Planner tasks ─────────────────────────────────────────────────
+-- label      : 'once' | 'daily'   (daily = recurring template)
+-- recur_time : HH:MM (24h) for daily tasks
+-- template_id: set on daily instances; references the template task id
+-- level      : 'I' (admin) | 'II' (reviewer+admin) | 'III' (everyone)
+CREATE TABLE IF NOT EXISTS public.qa_tasks (
+  id           TEXT PRIMARY KEY,
+  title        TEXT NOT NULL,
+  description  TEXT DEFAULT '',
+  status       TEXT NOT NULL DEFAULT 'backlog',
+  product_id   TEXT,
+  product_name TEXT,
+  assignee     TEXT,
+  created_by   TEXT NOT NULL,
+  tags         JSONB DEFAULT '[]',
+  images       JSONB DEFAULT '[]',
+  created_at   BIGINT,
+  updated_at   BIGINT,
+  due_date     TEXT,
+  label        TEXT DEFAULT 'once',
+  recur_time   TEXT,
+  template_id  TEXT,
+  level        TEXT DEFAULT 'III'
+);
+
+-- ── Tickets ───────────────────────────────────────────────────────
+-- label      : 'once' | 'daily'
+-- recur_time : HH:MM (24h) for daily tickets
+-- template_id: set on daily instances; references the template ticket id
+-- level      : 'I' (admin) | 'II' (reviewer+admin) | 'III' (everyone)
+CREATE TABLE IF NOT EXISTS public.qa_tickets (
+  id           TEXT PRIMARY KEY,
+  title        TEXT NOT NULL,
+  description  TEXT DEFAULT '',
+  status       TEXT NOT NULL DEFAULT 'open',
+  priority     TEXT NOT NULL DEFAULT 'medium',
+  product_id   TEXT,
+  product_name TEXT,
+  reporter     TEXT NOT NULL,
+  assignee     TEXT,
+  images       JSONB DEFAULT '[]',
+  created_at   BIGINT,
+  updated_at   BIGINT,
+  due_date     TEXT,
+  label        TEXT DEFAULT 'once',
+  recur_time   TEXT,
+  template_id  TEXT,
+  level        TEXT DEFAULT 'III'
+);
+
+-- ── Notifications ─────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.qa_notifications (
+  id          TEXT PRIMARY KEY,
+  to_username TEXT NOT NULL,
+  message     TEXT NOT NULL,
+  type        TEXT,
+  ref_id      TEXT,
+  ref_type    TEXT,
+  read        BOOLEAN DEFAULT FALSE,
+  created_at  BIGINT
+);
+
+-- ── Upgrade columns (safe to run on tables that already exist) ────
+-- These add any columns that were introduced after initial deployment.
+ALTER TABLE public.qa_tasks    ADD COLUMN IF NOT EXISTS due_date     TEXT;
+ALTER TABLE public.qa_tasks    ADD COLUMN IF NOT EXISTS label        TEXT DEFAULT 'once';
+ALTER TABLE public.qa_tasks    ADD COLUMN IF NOT EXISTS recur_time   TEXT;
+ALTER TABLE public.qa_tasks    ADD COLUMN IF NOT EXISTS template_id  TEXT;
+ALTER TABLE public.qa_tasks    ADD COLUMN IF NOT EXISTS level        TEXT DEFAULT 'III';
+
+ALTER TABLE public.qa_tickets  ADD COLUMN IF NOT EXISTS due_date     TEXT;
+ALTER TABLE public.qa_tickets  ADD COLUMN IF NOT EXISTS label        TEXT DEFAULT 'once';
+ALTER TABLE public.qa_tickets  ADD COLUMN IF NOT EXISTS recur_time   TEXT;
+ALTER TABLE public.qa_tickets  ADD COLUMN IF NOT EXISTS template_id  TEXT;
+ALTER TABLE public.qa_tickets  ADD COLUMN IF NOT EXISTS level        TEXT DEFAULT 'III';
+
+-- ── Disable RLS (app handles auth internally) ─────────────────────
 ALTER TABLE public.qa_users         DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.qa_submissions   DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.qa_profiles      DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.qa_products      DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.qa_user_products DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.qa_tasks         DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.qa_tickets       DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.qa_notifications DISABLE ROW LEVEL SECURITY;
 
 -- ── Grant API access to anon + authenticated roles ────────────────
 GRANT ALL ON TABLE public.qa_users         TO anon, authenticated;
@@ -71,3 +151,6 @@ GRANT ALL ON TABLE public.qa_submissions   TO anon, authenticated;
 GRANT ALL ON TABLE public.qa_profiles      TO anon, authenticated;
 GRANT ALL ON TABLE public.qa_products      TO anon, authenticated;
 GRANT ALL ON TABLE public.qa_user_products TO anon, authenticated;
+GRANT ALL ON TABLE public.qa_tasks         TO anon, authenticated;
+GRANT ALL ON TABLE public.qa_tickets       TO anon, authenticated;
+GRANT ALL ON TABLE public.qa_notifications TO anon, authenticated;

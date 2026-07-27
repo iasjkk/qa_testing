@@ -317,3 +317,22 @@ export function markAllNotificationsRead(username) {
 export function clearNotifications(username) {
   localStorage.setItem(NOTIFS_KEY, JSON.stringify(getAllNotifications().filter(n => n.toUsername !== username)));
 }
+
+// ── Activity log (localStorage fallback when Drive not configured) ─────────────
+const LOG_KEY = "qa_activity_log";
+
+export function getLogs() {
+  try { return JSON.parse(localStorage.getItem(LOG_KEY) || "[]"); }
+  catch { return []; }
+}
+
+export function appendLog(entry) {
+  const all = getLogs();
+  all.push(entry);
+  localStorage.setItem(LOG_KEY, JSON.stringify(all));
+}
+
+export function pruneLogs() {
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  localStorage.setItem(LOG_KEY, JSON.stringify(getLogs().filter(e => (e.createdAt ?? 0) > cutoff)));
+}

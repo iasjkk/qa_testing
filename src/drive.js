@@ -27,3 +27,20 @@ export async function deleteSubmissionPhotos(sub) {
   const ids = (sub.rows ?? []).map(r => r.screenshot?.driveFileId).filter(Boolean);
   await Promise.all(ids.map(deletePhoto));
 }
+
+export async function appendLog(entry) {
+  if (!driveEnabled) return;
+  await callScript({ action: "appendLog", entry }).catch(() => {});
+}
+
+export async function readLogs() {
+  if (!driveEnabled) return [];
+  const data = await callScript({ action: "readLogs" }).catch(() => ({ logs: [] }));
+  return data.logs ?? [];
+}
+
+export async function pruneOldLogs() {
+  if (!driveEnabled) return;
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  await callScript({ action: "pruneOldLogs", cutoff }).catch(() => {});
+}

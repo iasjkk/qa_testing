@@ -15,6 +15,7 @@ import {
   dbGetTasks, dbSaveTask, dbDeleteTask,
   dbGetTickets, dbSaveTicket, dbDeleteTicket,
   dbGetNotifications, dbSaveNotification, dbMarkNotificationRead, dbMarkAllNotificationsRead, dbClearNotifications,
+  dbAppendLog, dbReadLogs, dbPruneLogs,
 } from "./db";
 import { driveEnabled, uploadPhoto, deleteSubmissionPhotos } from "./drive";
 import logo from "./assets/logo.png";
@@ -194,7 +195,7 @@ function openReport(rows, session) {
 }
 
 // ── ProfileMenu ───────────────────────────────────────────────────────────────
-function ProfileMenu({ username, onLogout }) {
+function ProfileMenu({ username, role, onLogout }) {
   const [open, setOpen]           = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const ref = useRef(null);
@@ -207,6 +208,7 @@ function ProfileMenu({ username, onLogout }) {
 
   return (
     <>
+      <div className="profile-menu-wrap">
       <div className="profile-menu" ref={ref}>
         <button className="profile-btn" onClick={() => setOpen(o => !o)}>
           <span className="profile-avatar">{username.charAt(0).toUpperCase()}</span>
@@ -228,6 +230,12 @@ function ProfileMenu({ username, onLogout }) {
           </div>
         )}
       </div>
+      {role && (
+        <div className="logged-in-label">
+          Logged in as <strong>{username}</strong> · <span className={`role-badge role-badge--${role}`}>{role}</span>
+        </div>
+      )}
+      </div>
       {confirmLogout && (
         <div className="modal-overlay">
           <div className="modal">
@@ -244,11 +252,30 @@ function ProfileMenu({ username, onLogout }) {
   );
 }
 
+function playNotifSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.12);
+    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.24);
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.5);
+  } catch {}
+}
+
 // ── NotificationBell ──────────────────────────────────────────────────────────
 function NotificationBell({ username, onNavigate }) {
-  const [notifs, setNotifs] = useState([]);
-  const [open, setOpen]     = useState(false);
-  const ref = useRef(null);
+  const [notifs, setNotifs]   = useState([]);
+  const [open, setOpen]       = useState(false);
+  const ref                   = useRef(null);
+  const prevUnreadRef         = useRef(0);
 
   const load = () => dbGetNotifications(username).then(setNotifs).catch(() => {});
 
@@ -265,6 +292,11 @@ function NotificationBell({ username, onNavigate }) {
   }, []);
 
   const unread = notifs.filter(n => !n.read).length;
+
+  useEffect(() => {
+    if (unread > prevUnreadRef.current) playNotifSound();
+    prevUnreadRef.current = unread;
+  }, [unread]);
 
   const handleClick = (n) => {
     if (!n.read) dbMarkNotificationRead(n.id).then(load);
@@ -994,7 +1026,7 @@ function ReviewPortal({ currentUser, currentRole, onBack, onLogout, onNavigate }
           <div className="header-right">
             <button className="btn-secondary-sm" onClick={() => setSelected(null)}>← Back</button>
             <button className="btn-view-report" onClick={submitReview}>Submit Review</button>
-            <ProfileMenu username={currentUser} onLogout={onLogout} />
+            <ProfileMenu username={currentUser} role={currentRole} onLogout={onLogout} />
           </div>
         </header>
         <main className="app-main">
@@ -1102,7 +1134,7 @@ function ReviewPortal({ currentUser, currentRole, onBack, onLogout, onNavigate }
         <div className="header-right">
           <button className="btn-secondary-sm" onClick={onBack}>← Portal</button>
           <NotificationBell username={currentUser} onNavigate={onNavigate} />
-          <ProfileMenu username={currentUser} onLogout={onLogout} />
+          <ProfileMenu username={currentUser} role={currentRole} onLogout={onLogout} />
         </div>
       </header>
       <main className="app-main">
@@ -1201,11 +1233,10 @@ function InlineReportViewer({ sub, currentUser, onBack, onLogout }) {
             </button>
           )}
           <button className="btn-secondary-sm" onClick={onBack}>← All Reports</button>
-          <ProfileMenu username={currentUser} onLogout={onLogout} />
+          <ProfileMenu username={currentUser} role={currentRole} onLogout={onLogout} />
         </div>
       </header>
       <main className="app-main">
-
         {/* Summary */}
         {isAdmin && (
           <div className="summary-bar">
@@ -1230,7 +1261,6 @@ function InlineReportViewer({ sub, currentUser, onBack, onLogout }) {
             )}
           </div>
         )}
-
         {/* Main question table */}
         <div className="table-wrap">
           <table className="qa-table rv-table">
@@ -1288,7 +1318,6 @@ function InlineReportViewer({ sub, currentUser, onBack, onLogout }) {
             </tbody>
           </table>
         </div>
-
         {/* Review section */}
         {isTester && sub.review && showReview && (
           <div className="rv-review-section">
@@ -1416,7 +1445,7 @@ function ReportsPortal({ currentUser, currentRole, onBack, onLogout, onNavigate 
         <div className="header-right">
           <button className="btn-secondary-sm" onClick={onBack}>← Portal</button>
           <NotificationBell username={currentUser} onNavigate={onNavigate} />
-          <ProfileMenu username={currentUser} onLogout={onLogout} />
+          <ProfileMenu username={currentUser} role={currentRole} onLogout={onLogout} />
         </div>
       </header>
       <main className="app-main">
@@ -1533,7 +1562,7 @@ function CountdownBadge({ remaining, urgent, warning }) {
 }
 
 // ── TestingProfilesPortal ─────────────────────────────────────────────────────
-function TestingProfilesPortal({ currentUser, onEdit, onBack, onLogout }) {
+function TestingProfilesPortal({ currentUser, currentRole, onEdit, onBack, onLogout }) {
   const [profiles,     setProfiles]     = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -1611,7 +1640,7 @@ function TestingProfilesPortal({ currentUser, onEdit, onBack, onLogout }) {
         <div className="header-right">
           <button className="btn-start btn-start-gray" style={{ padding: "9px 18px", fontSize: 13 }} onClick={handleCreate}>+ New Testing</button>
           <button className="btn-secondary-sm" onClick={onBack}>← Portal</button>
-          <ProfileMenu username={currentUser} onLogout={onLogout} />
+          <ProfileMenu username={currentUser} role={currentRole} onLogout={onLogout} />
         </div>
       </header>
       <main className="app-main">
@@ -1655,7 +1684,7 @@ function TestingProfilesPortal({ currentUser, onEdit, onBack, onLogout }) {
 }
 
 // ── ProfileEditorPortal ───────────────────────────────────────────────────────
-function ProfileEditorPortal({ profile: initialProfile, currentUser, onBack, onLogout }) {
+function ProfileEditorPortal({ profile: initialProfile, currentUser, currentRole, onBack, onLogout }) {
   const [profile, setProfile] = useState(initialProfile);
   const [qs,      setQs]      = useState(() => initialProfile.questions ?? []);
   const [dirty,   setDirty]   = useState(false);
@@ -1743,7 +1772,7 @@ function ProfileEditorPortal({ profile: initialProfile, currentUser, onBack, onL
         <div className="header-right">
           {dirty && <button className="btn-view-report" onClick={saveChanges}>Save Changes</button>}
           <button className="btn-secondary-sm" onClick={onBack}>← Profiles</button>
-          <ProfileMenu username={currentUser} onLogout={onLogout} />
+          <ProfileMenu username={currentUser} role={currentRole} onLogout={onLogout} />
         </div>
       </header>
       <main className="app-main">
@@ -1846,7 +1875,7 @@ function ProfilePickerPortal({ mode, session, onPick, onCancel, onLogout }) {
       <div className="idle-page">
         <header className="app-header">
           <div className="header-left"><BrandTitle /><p className="header-sub">Loading…</p></div>
-          <div className="header-right"><ProfileMenu username={session.username} onLogout={onLogout} /></div>
+          <div className="header-right"><ProfileMenu username={session.username} role={session.role} onLogout={onLogout} /></div>
         </header>
         <div className="idle-body"><p style={{ color: "#aaa" }}>Loading…</p></div>
       </div>
@@ -1860,7 +1889,7 @@ function ProfilePickerPortal({ mode, session, onPick, onCancel, onLogout }) {
           <div className="header-left"><BrandTitle /><p className="header-sub">Starting {modeLabel}</p></div>
           <div className="header-right">
             <button className="btn-secondary-sm" onClick={onCancel}>← Back</button>
-            <ProfileMenu username={session.username} onLogout={onLogout} />
+            <ProfileMenu username={session.username} role={session.role} onLogout={onLogout} />
           </div>
         </header>
         <div className="idle-body">
@@ -1881,7 +1910,7 @@ function ProfilePickerPortal({ mode, session, onPick, onCancel, onLogout }) {
         <div className="header-left"><BrandTitle /><p className="header-sub">{subtitle}</p></div>
         <div className="header-right">
           <button className="btn-secondary-sm" onClick={handleBack}>← Back</button>
-          <ProfileMenu username={session.username} onLogout={onLogout} />
+          <ProfileMenu username={session.username} role={session.role} onLogout={onLogout} />
         </div>
       </header>
       <div className="idle-body" style={{ alignItems: "flex-start" }}>
@@ -1939,7 +1968,7 @@ function ProfilePickerPortal({ mode, session, onPick, onCancel, onLogout }) {
 }
 
 // ── ProductsPortal ────────────────────────────────────────────────────────────
-function ProductsPortal({ currentUser, onBack, onLogout }) {
+function ProductsPortal({ currentUser, currentRole, onBack, onLogout }) {
   const [products,     setProducts]     = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -2039,7 +2068,7 @@ function ProductsPortal({ currentUser, onBack, onLogout }) {
         <div className="header-right">
           <button className="btn-start btn-start-red" style={{ padding: "9px 18px", fontSize: 13 }} onClick={() => setCreating(true)}>+ New Product</button>
           <button className="btn-secondary-sm" onClick={onBack}>← Portal</button>
-          <ProfileMenu username={currentUser} onLogout={onLogout} />
+          <ProfileMenu username={currentUser} role={currentRole} onLogout={onLogout} />
         </div>
       </header>
       <main className="app-main">
@@ -2084,7 +2113,7 @@ const ROLE_DESC   = {
   tester:   "Tester portal only — upload live phtotos per session",
 };
 
-function AccountsPortal({ currentUser, onBack, onLogout }) {
+function AccountsPortal({ currentUser, currentRole, onBack, onLogout }) {
   const [users,        setUsers]        = useState([]);
   const [allProducts,  setAllProducts]  = useState([]);
   const [loading,      setLoading]      = useState(true);
@@ -2274,7 +2303,7 @@ function AccountsPortal({ currentUser, onBack, onLogout }) {
           <button className="btn-start btn-start-indigo" style={{ padding: "9px 18px", fontSize: 13 }}
             onClick={() => setShowCreate(true)}>+ Create Account</button>
           <button className="btn-secondary-sm" onClick={onBack}>← Portal</button>
-          <ProfileMenu username={currentUser} onLogout={onLogout} />
+          <ProfileMenu username={currentUser} role={currentRole} onLogout={onLogout} />
         </div>
       </header>
       <main className="app-main">
@@ -2355,6 +2384,57 @@ function AccountsPortal({ currentUser, onBack, onLogout }) {
   );
 }
 
+// ── LogPanel ──────────────────────────────────────────────────────────────────
+function LogPanel({ refType, onClose }) {
+  const [logs,    setLogs]    = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    dbReadLogs()
+      .then(all => {
+        const filtered = all
+          .filter(l => l.refType === refType)
+          .sort((a, b) => b.createdAt - a.createdAt);
+        setLogs(filtered);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [refType]);
+
+  const actionLabel = (l) => {
+    if (l.action === "created")        return `Created "${l.refTitle}"`;
+    if (l.action === "deleted")        return `Deleted "${l.refTitle}"`;
+    if (l.action === "status_changed") return `"${l.refTitle}" — ${l.detail}`;
+    if (l.action === "edited")         return `Edited "${l.refTitle}"${l.detail ? ` — ${l.detail}` : ""}`;
+    return `${l.action} "${l.refTitle}"`;
+  };
+
+  return (
+    <div className="log-panel-overlay" onClick={onClose}>
+      <div className="log-panel" onClick={e => e.stopPropagation()}>
+        <div className="log-panel-header">
+          <span>Activity Log</span>
+          <button className="log-panel-close" onClick={onClose}>×</button>
+        </div>
+        <div className="log-panel-body">
+          {loading ? (
+            <p className="log-empty">Loading…</p>
+          ) : logs.length === 0 ? (
+            <p className="log-empty">No activity recorded yet.</p>
+          ) : logs.map(l => (
+            <div key={l.id} className="log-entry">
+              <div className="log-entry-action">{actionLabel(l)}</div>
+              <div className="log-entry-meta">
+                <strong>{l.actor}</strong> · {fmtDateTime(l.createdAt)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── KanbanPortal ─────────────────────────────────────────────────────────────
 const TASK_COLUMNS = [
   { id: "backlog",     label: "Backlog" },
@@ -2364,75 +2444,144 @@ const TASK_COLUMNS = [
 ];
 
 function KanbanPortal({ currentUser, currentRole, onBack, onLogout, onNavigate }) {
-  const [tasks,     setTasks]     = useState([]);
-  const [products,  setProducts]  = useState([]);
-  const [allUsers,  setAllUsers]  = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [modal,     setModal]     = useState(null); // null | { mode: "create"|"edit", task?: {} }
-  const [deleteId,  setDeleteId]  = useState(null);
+  const [tasks,          setTasks]         = useState([]);
+  const [products,       setProducts]      = useState([]);
+  const [allUsers,       setAllUsers]      = useState([]);
+  const [testerProducts, setTesterProducts] = useState(null); // null = all, array = filtered
+  const [loading,        setLoading]       = useState(true);
+  const [modal,          setModal]         = useState(null);
+  const [deleteId,       setDeleteId]      = useState(null);
+  const [showLog,        setShowLog]       = useState(false);
 
   const isAdmin    = currentRole === "admin";
   const isReviewer = currentRole === "reviewer";
+  const isTester   = currentRole === "tester";
   const canCreate  = isAdmin || isReviewer;
 
   useEffect(() => {
-    Promise.all([dbGetTasks(), dbGetProducts(), dbGetAllUsers()])
-      .then(([t, p, u]) => { setTasks(t); setProducts(p); setAllUsers(u); setLoading(false); })
-      .catch(() => setLoading(false));
+    dbPruneLogs().catch(() => {});
+    const TODAY      = new Date().toISOString().slice(0, 10);
+    const TEN_AGO    = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    const spawnDailyTasks = async (allTasks) => {
+      const templates = allTasks.filter(t => t.label === "daily" && !t.templateId);
+      for (const tpl of templates) {
+        const alreadyExists = allTasks.some(t => t.templateId === tpl.id && t.dueDate === TODAY);
+        if (!alreadyExists) {
+          await dbSaveTask({
+            ...tpl,
+            id:         `task_daily_${tpl.id}_${TODAY}`,
+            label:      "once",
+            templateId: tpl.id,
+            dueDate:    TODAY,
+            status:     "in-progress",
+            createdAt:  Date.now(),
+            updatedAt:  Date.now(),
+          });
+        }
+      }
+    };
+
+    const load = async () => {
+      try {
+        const [allTasks, p, u, myProds] = await Promise.all([
+          dbGetTasks(),
+          dbGetProducts(),
+          dbGetAllUsers(),
+          isTester ? dbGetUserProducts(currentUser) : Promise.resolve(null),
+        ]);
+        // Delete daily instances older than 10 days
+        const stale = allTasks.filter(t => t.templateId && t.dueDate && t.dueDate < TEN_AGO);
+        if (stale.length > 0) await Promise.all(stale.map(t => dbDeleteTask(t.id)));
+
+        await spawnDailyTasks(allTasks);
+        // Reload tasks after spawning so new daily instances appear
+        const freshTasks = await dbGetTasks();
+        setTasks(freshTasks); setProducts(p); setAllUsers(u);
+        setTesterProducts(myProds);
+      } catch {}
+      setLoading(false);
+    };
+
+    load();
   }, []);
 
   const openCreate = () => setModal({ mode: "create", task: {
     id: `task_${Date.now()}`, title: "", description: "", status: "backlog",
     productId: null, productName: null, assignee: null,
     createdBy: currentUser, tags: [], images: [],
-    createdAt: Date.now(), updatedAt: Date.now(),
+    createdAt: Date.now(), updatedAt: Date.now(), dueDate: null,
+    label: "once", recurTime: null, templateId: null, level: "III",
   }});
 
-  const openEdit = (task) => {
-    if (!canCreate && task.assignee !== currentUser) return;
-    setModal({ mode: "edit", task: { ...task } });
-  };
+  const openEdit = (task) => setModal({ mode: "edit", task: { ...task } });
 
-  const handleSave = async (task) => {
+  const handleSave = (task) => {
     const orig = tasks.find(t => t.id === task.id);
     task.updatedAt = Date.now();
-    await dbSaveTask(task);
+    if (task.label === "daily" && task.status === "backlog") task.status = "in-progress";
 
-    // Notify assignee
-    if (task.assignee && task.assignee !== currentUser) {
-      await dbSaveNotification({
-        id: `notif_${Date.now()}_a_${task.assignee}`,
-        toUsername: task.assignee,
-        message: `${currentUser} assigned you task: "${task.title}"`,
-        type: "task_assigned", refId: task.id, refType: "task",
-        read: false, createdAt: Date.now(),
-      });
-    }
-    // Notify newly added tags
-    const prevTags = orig?.tags ?? [];
-    const newTags  = (task.tags ?? []).filter(u => !prevTags.includes(u) && u !== currentUser);
-    await Promise.all(newTags.map(u => dbSaveNotification({
-      id: `notif_${Date.now()}_tag_${u}`,
-      toUsername: u,
-      message: `${currentUser} tagged you in task: "${task.title}"`,
-      type: "task_tagged", refId: task.id, refType: "task",
-      read: false, createdAt: Date.now(),
-    })));
-
+    // Optimistic update — show card and close modal instantly
     setTasks(prev => {
       const idx = prev.findIndex(t => t.id === task.id);
       return idx >= 0 ? prev.map(t => t.id === task.id ? task : t) : [...prev, task];
     });
     setModal(null);
+
+    // Persist to DB in background
+    dbSaveTask(task).catch(() => {});
+
+    // Activity log + notifications fire in background
+    const isNew = !orig;
+    const changes = [];
+    if (!isNew && orig.status   !== task.status)   changes.push(`status: ${orig.status} → ${task.status}`);
+    if (!isNew && orig.assignee !== task.assignee) changes.push(`assignee: ${orig.assignee ?? "—"} → ${task.assignee ?? "—"}`);
+    if (!isNew && orig.level    !== task.level)    changes.push(`level: ${orig.level ?? "III"} → ${task.level ?? "III"}`);
+    dbAppendLog({
+      id: `log_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      refType: "task", refId: task.id, refTitle: task.title,
+      actor: currentUser, action: isNew ? "created" : "edited",
+      detail: changes.join("; "), createdAt: Date.now(),
+    });
+    if (task.assignee && task.assignee !== currentUser) {
+      dbSaveNotification({
+        id: `notif_${Date.now()}_a_${task.assignee}`,
+        toUsername: task.assignee,
+        message: `${currentUser} assigned you task: "${task.title}"`,
+        type: "task_assigned", refId: task.id, refType: "task",
+        read: false, createdAt: Date.now(),
+      }).catch(() => {});
+    }
+    const prevTags = orig?.tags ?? [];
+    const newTags  = (task.tags ?? []).filter(u => !prevTags.includes(u) && u !== currentUser);
+    newTags.forEach(u => dbSaveNotification({
+      id: `notif_${Date.now()}_tag_${u}`,
+      toUsername: u,
+      message: `${currentUser} tagged you in task: "${task.title}"`,
+      type: "task_tagged", refId: task.id, refType: "task",
+      read: false, createdAt: Date.now(),
+    }).catch(() => {}));
   };
 
   const handleDelete = async () => {
+    const t = tasks.find(t => t.id === deleteId);
+    dbAppendLog({
+      id: `log_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      refType: "task", refId: deleteId, refTitle: t?.title ?? deleteId,
+      actor: currentUser, action: "deleted", detail: "", createdAt: Date.now(),
+    });
     await dbDeleteTask(deleteId);
     setTasks(prev => prev.filter(t => t.id !== deleteId));
     setDeleteId(null);
   };
 
   const handleStatusChange = async (task, newStatus) => {
+    dbAppendLog({
+      id: `log_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      refType: "task", refId: task.id, refTitle: task.title,
+      actor: currentUser, action: "status_changed",
+      detail: `${task.status} → ${newStatus}`, createdAt: Date.now(),
+    });
     const updated = { ...task, status: newStatus, updatedAt: Date.now() };
     await dbSaveTask(updated);
     setTasks(prev => prev.map(t => t.id === task.id ? updated : t));
@@ -2445,7 +2594,7 @@ function KanbanPortal({ currentUser, currentRole, onBack, onLogout, onNavigate }
         <div className="header-right">
           <button className="btn-secondary-sm" onClick={onBack}>← Portal</button>
           <NotificationBell username={currentUser} onNavigate={onNavigate} />
-          <ProfileMenu username={currentUser} onLogout={onLogout} />
+          <ProfileMenu username={currentUser} role={currentRole} onLogout={onLogout} />
         </div>
       </header>
       <div className="portal-empty"><p>Loading…</p></div>
@@ -2478,21 +2627,60 @@ function KanbanPortal({ currentUser, currentRole, onBack, onLogout, onNavigate }
           </div>
         </div>
       )}
+      {showLog && <LogPanel refType="task" onClose={() => setShowLog(false)} />}
       <header className="app-header">
-        <div className="header-left"><h1>Planner Board</h1></div>
+        <div className="header-left">
+          <img src={logo} alt="Logo" className="brand-logo" />
+          <h1>Planner Board</h1>
+        </div>
         <div className="header-right">
           {canCreate && <button className="btn-view-report" onClick={openCreate}>+ New Task</button>}
+          {isAdmin && <button className="btn-secondary-sm" onClick={() => setShowLog(true)}>📋 Log</button>}
           <button className="btn-secondary-sm" onClick={onBack}>← Portal</button>
           <NotificationBell username={currentUser} onNavigate={onNavigate} />
-          <ProfileMenu username={currentUser} onLogout={onLogout} />
+          <ProfileMenu username={currentUser} role={currentRole} onLogout={onLogout} />
         </div>
       </header>
       <main className="app-main">
         <div className="kanban-board">
           {TASK_COLUMNS.map(col => {
-            const colTasks = tasks.filter(t => t.status === col.id);
+            const visibleTasks = (testerProducts !== null
+              ? tasks.filter(t => t.productId && testerProducts.includes(t.productId))
+              : tasks
+            ).filter(t => {
+              if (isAdmin) return true;
+              if (isReviewer) return t.level !== "I";
+              return t.level === "III"; // tester
+            });
+            const colTasks = visibleTasks
+              .filter(t => t.status === col.id)
+              .sort((a, b) => {
+                // daily first
+                if (a.label === "daily" && b.label !== "daily") return -1;
+                if (a.label !== "daily" && b.label === "daily") return 1;
+                // within daily: sort by recurTime
+                if (a.label === "daily") {
+                  return (a.recurTime ?? "99:99").localeCompare(b.recurTime ?? "99:99");
+                }
+                // within once: sort by dueDate ascending, null last
+                if (!a.dueDate && !b.dueDate) return 0;
+                if (!a.dueDate) return 1;
+                if (!b.dueDate) return -1;
+                return a.dueDate.localeCompare(b.dueDate);
+              });
             return (
-              <div key={col.id} className="kanban-col" data-col={col.id}>
+              <div key={col.id} className="kanban-col" data-col={col.id}
+                onDragOver={canCreate ? (e) => { e.preventDefault(); e.currentTarget.classList.add("drag-over"); } : undefined}
+                onDragLeave={canCreate ? (e) => { e.currentTarget.classList.remove("drag-over"); } : undefined}
+                onDrop={canCreate ? (e) => {
+                  e.currentTarget.classList.remove("drag-over");
+                  const taskId = e.dataTransfer.getData("taskId");
+                  const task = tasks.find(t => t.id === taskId);
+                  if (!task || task.status === col.id) return;
+                  if (task.label === "daily" && col.id === "backlog") return;
+                  if (isTester && col.id === "done") return;
+                  handleStatusChange(task, col.id);
+                } : undefined}>
                 <div className="kanban-col-header">
                   <span>{col.label}</span>
                   <span className="kanban-col-count">{colTasks.length}</span>
@@ -2505,8 +2693,9 @@ function KanbanPortal({ currentUser, currentRole, onBack, onLogout, onNavigate }
                     currentRole={currentRole}
                     allUsers={allUsers}
                     onEdit={() => openEdit(task)}
-                    onDelete={() => isAdmin && setDeleteId(task.id)}
+                    onDelete={() => (isAdmin || isReviewer) && setDeleteId(task.id)}
                     onStatusChange={(s) => handleStatusChange(task, s)}
+                    canDrag={canCreate}
                   />
                 ))}
                 {colTasks.length === 0 && <div className="kanban-empty">No tasks</div>}
@@ -2519,33 +2708,59 @@ function KanbanPortal({ currentUser, currentRole, onBack, onLogout, onNavigate }
   );
 }
 
-function KanbanCard({ task, currentUser, currentRole, allUsers, onEdit, onDelete, onStatusChange }) {
+function KanbanCard({ task, currentUser, currentRole, allUsers, onEdit, onDelete, onStatusChange, canDrag }) {
   const isAdmin    = currentRole === "admin";
   const isReviewer = currentRole === "reviewer";
+  const isTester   = currentRole === "tester";
   const isMine     = task.assignee === currentUser;
-  const canEdit    = isAdmin || isReviewer || isMine;
-  const canDelete  = isAdmin;
+  const canEdit    = isAdmin || isReviewer || isMine || isTester;
+  const canDelete  = isAdmin || (isReviewer && task.createdBy !== undefined);
 
   const statusOptions = TASK_COLUMNS.map(c => c.id).filter(s => s !== task.status);
 
   return (
-    <div className="kanban-card" onClick={canEdit ? onEdit : undefined} style={{ cursor: canEdit ? "pointer" : "default" }}>
-      {task.productName && <span className="kanban-card-product">{task.productName}</span>}
-      <div className="kanban-card-title">{task.title}</div>
+    <div className={`kanban-card ${task.label === "daily" ? "card-daily" : "card-once"}`}
+      draggable={canDrag && !(isTester && task.status === "done")}
+      onDragStart={(canDrag && !(isTester && task.status === "done")) ? (e) => { e.dataTransfer.setData("taskId", task.id); e.currentTarget.classList.add("dragging"); } : undefined}
+      onDragEnd={canDrag ? (e) => e.currentTarget.classList.remove("dragging") : undefined}
+      onClick={canEdit ? onEdit : undefined}
+      style={{ cursor: canDrag ? "grab" : canEdit ? "pointer" : "default" }}>
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 4 }}>
+        {task.productName && <span className="kanban-card-product">{task.productName}</span>}
+        <span className={`ticket-level-badge level-${task.level ?? "III"}`}>Level {task.level ?? "III"}</span>
+      </div>
+      <div className="kanban-card-title">
+        <span title={task.label === "daily" ? "Daily recurring template" : "One-time task"} style={{ marginRight: 4 }}>
+          {task.label === "daily" ? "🔁" : "📌"}
+        </span>
+        {task.title}
+      </div>
       {task.description && <div className="kanban-card-desc">{task.description.slice(0, 80)}{task.description.length > 80 ? "…" : ""}</div>}
       <div className="kanban-card-meta">
         {task.assignee && <span className="kanban-card-assignee">👤 {task.assignee}</span>}
         {task.tags?.length > 0 && <span className="kanban-card-tags">🏷 {task.tags.length}</span>}
         {task.images?.length > 0 && <span className="kanban-card-imgs">🖼 {task.images.length}</span>}
       </div>
+      <div className="kanban-card-dates">
+        <span className="kanban-date-created">📅 {new Date(task.createdAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</span>
+        {task.dueDate && task.label !== "daily" && (
+          <span className={`kanban-date-due${new Date(task.dueDate) < new Date() && task.status !== "done" ? " overdue" : ""}`}>
+            ⏰ {new Date(task.dueDate).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+          </span>
+        )}
+        {task.label === "daily" && task.recurTime && (
+          <span className="kanban-date-due">⏰ Daily {(() => { const [h, m] = task.recurTime.split(":"); const hr = +h; return `${hr % 12 || 12}:${m} ${hr < 12 ? "AM" : "PM"}`; })()}</span>
+        )}
+      </div>
       <div className="kanban-card-footer" onClick={e => e.stopPropagation()}>
-        {(isAdmin || isReviewer || isMine) && (
+        {(isAdmin || isReviewer) && (
           <select className="kanban-status-select" value={task.status}
-            onChange={e => {
-              if (isAdmin || isReviewer) { onStatusChange(e.target.value); return; }
-              if (isMine) onStatusChange(e.target.value);
-            }}>
-            {TASK_COLUMNS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+            onChange={e => onStatusChange(e.target.value)}>
+            {TASK_COLUMNS.filter(c => {
+              if (task.label === "daily" && c.id === "backlog") return false;
+              if (isTester && c.id === "done") return false;
+              return true;
+            }).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
           </select>
         )}
         {canDelete && <button className="kanban-del-btn" onClick={onDelete}>✕</button>}
@@ -2557,16 +2772,39 @@ function KanbanCard({ task, currentUser, currentRole, allUsers, onEdit, onDelete
 function TaskModal({ task: initTask, mode, currentUser, currentRole, products, allUsers, onSave, onClose }) {
   const [task, setTask] = useState({ ...initTask });
   const [saving, setSaving] = useState(false);
+  const [assigneeProducts, setAssigneeProducts] = useState(null);
   const isAdmin    = currentRole === "admin";
   const isReviewer = currentRole === "reviewer";
+  const isTester   = currentRole === "tester";
 
   const wordCount = (task.description ?? "").trim() === "" ? 0 : (task.description ?? "").trim().split(/\s+/).length;
 
   const assignableUsers = allUsers.filter(u => {
+    const lvl = task.level ?? "III";
+    if (lvl === "I" && u.role !== "admin") return false;
+    if (lvl === "II" && u.role !== "admin" && u.role !== "reviewer") return false;
     if (isAdmin) return true;
-    if (isReviewer) return u.role === "tester";
+    if (isReviewer) return true;
+    if (isTester) return u.role === "reviewer" || u.role === "admin" || u.username === currentUser;
     return false;
   });
+
+  useEffect(() => {
+    if (task.assignee) {
+      const assigneeUser = allUsers.find(u => u.username === task.assignee);
+      if (assigneeUser?.role === "tester") {
+        dbGetUserProducts(task.assignee).then(ids => setAssigneeProducts(ids)).catch(() => setAssigneeProducts(null));
+      } else {
+        setAssigneeProducts(null);
+      }
+    } else {
+      setAssigneeProducts(null);
+    }
+  }, [task.assignee, allUsers]);
+
+  const filteredProducts = assigneeProducts !== null
+    ? products.filter(p => assigneeProducts.includes(p.id))
+    : products;
 
   const toggleTag = (username) => {
     setTask(t => ({
@@ -2575,12 +2813,15 @@ function TaskModal({ task: initTask, mode, currentUser, currentRole, products, a
     }));
   };
 
-  const handleSubmit = async (e) => {
+  const isValid = task.title.trim() &&
+    (isTester || task.assignee) &&
+    (isTester || task.productId) &&
+    (isTester || (task.label === "daily" ? !!task.recurTime : !!task.dueDate));
+
+  const handleSubmit = (e) => {
     e.preventDefault();
-    if (!task.title.trim()) return;
-    setSaving(true);
-    await onSave(task);
-    setSaving(false);
+    if (!isValid) return;
+    onSave(task);
   };
 
   return (
@@ -2597,7 +2838,6 @@ function TaskModal({ task: initTask, mode, currentUser, currentRole, products, a
                 onChange={e => setTask(t => ({ ...t, title: e.target.value }))}
                 placeholder="Task title" required
                 disabled={currentRole === "tester"} />
-
               <label className="login-label" style={{ marginTop: 12 }}>Description</label>
               <div style={{ position: "relative" }}>
                 <textarea className="login-input" rows={5}
@@ -2613,77 +2853,132 @@ function TaskModal({ task: initTask, mode, currentUser, currentRole, products, a
                   {wordCount} / 200
                 </span>
               </div>
-
-              <label className="login-label" style={{ marginTop: 12 }}>Tags (notify users)</label>
-              <div className="tag-chip-wrap">
-                {allUsers.filter(u => u.username !== currentUser).map(u => (
-                  <span key={u.username}
-                    className={`tag-chip${task.tags.includes(u.username) ? " active" : ""}`}
-                    onClick={() => toggleTag(u.username)}>
-                    {u.username}
-                  </span>
-                ))}
-                {allUsers.filter(u => u.username !== currentUser).length === 0 && (
-                  <span style={{ fontSize: 12, color: "#aaa" }}>No other users</span>
-                )}
-              </div>
+              {!isTester && (
+                <>
+                  <label className="login-label" style={{ marginTop: 12 }}>Tags (notify users)</label>
+                  <div className="tag-chip-wrap">
+                    {allUsers.filter(u => u.username !== currentUser).map(u => (
+                      <span key={u.username}
+                        className={`tag-chip${task.tags.includes(u.username) ? " active" : ""}`}
+                        onClick={() => toggleTag(u.username)}>
+                        {u.username}
+                      </span>
+                    ))}
+                    {allUsers.filter(u => u.username !== currentUser).length === 0 && (
+                      <span style={{ fontSize: 12, color: "#aaa" }}>No other users</span>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
-
             {/* Right column */}
             <div className="task-modal-right">
-              <label className="login-label">Product</label>
-              <select className="login-input" value={task.productId ?? ""}
+              <label className="login-label">Ticket Level</label>
+              <select className="login-input" value={task.level ?? "III"}
+                disabled={isTester}
                 onChange={e => {
-                  const p = products.find(x => x.id === e.target.value);
-                  setTask(t => ({ ...t, productId: p?.id ?? null, productName: p?.name ?? null }));
-                }}
-                disabled={currentRole === "tester"}>
-                <option value="">None</option>
-                {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  const newLevel = e.target.value;
+                  setTask(t => {
+                    const assigneeUser = allUsers.find(u => u.username === t.assignee);
+                    const roleOk = newLevel === "III" ? true
+                      : newLevel === "II" ? (assigneeUser?.role === "admin" || assigneeUser?.role === "reviewer")
+                      : assigneeUser?.role === "admin";
+                    return { ...t, level: newLevel, assignee: roleOk ? t.assignee : null, productId: roleOk ? t.productId : null, productName: roleOk ? t.productName : null };
+                  });
+                }}>
+                {isAdmin && <option value="I">Level I (Admin)</option>}
+                {(isAdmin || isReviewer) && <option value="II">Level II (Reviewer)</option>}
+                <option value="III">Level III (Tester)</option>
               </select>
-
-              {(isAdmin || isReviewer) && (
+              <label className="login-label" style={{ marginTop: 12 }}>Type *</label>
+              <select className="login-input" value={task.label ?? "once"}
+                disabled={isTester}
+                onChange={e => setTask(t => ({ ...t, label: e.target.value, recurTime: e.target.value === "once" ? null : t.recurTime, dueDate: e.target.value === "daily" ? null : t.dueDate }))}>
+                <option value="once">📌 Once</option>
+                <option value="daily">🔁 Daily</option>
+              </select>
+              {task.label === "daily" && (
                 <>
-                  <label className="login-label" style={{ marginTop: 12 }}>Assignee</label>
+                  <label className="login-label" style={{ marginTop: 12 }}>Due Time * <span style={{ fontSize: 11, color: "#888" }}>(same every day)</span></label>
+                  <input type="time" className="login-input" required
+                    value={task.recurTime ?? ""}
+                    disabled={isTester}
+                    onChange={e => setTask(t => ({ ...t, recurTime: e.target.value || null }))} />
+                </>
+              )}
+              {(!isTester || task.status === "in-review") && (
+                <>
+                  <label className="login-label" style={{ marginTop: 12 }}>Assignee *</label>
                   <select className="login-input" value={task.assignee ?? ""}
-                    onChange={e => setTask(t => ({ ...t, assignee: e.target.value || null }))}>
-                    <option value="">Unassigned</option>
-                    {assignableUsers.map(u => <option key={u.username} value={u.username}>{u.username}</option>)}
+                    onChange={e => setTask(t => ({ ...t, assignee: e.target.value || null, ...(isTester ? {} : { productId: null, productName: null }) }))}>
+                    <option value="">{isTester ? "— assign to reviewer / admin —" : "Unassigned"}</option>
+                    {assignableUsers.map(u => <option key={u.username} value={u.username}>{u.username} ({u.role})</option>)}
                   </select>
                 </>
               )}
-
+              <label className="login-label" style={{ marginTop: 12 }}>Product *</label>
+              <select className="login-input" value={task.productId ?? ""}
+                disabled={isTester}
+                onChange={e => {
+                  const p = filteredProducts.find(x => x.id === e.target.value);
+                  setTask(t => ({ ...t, productId: p?.id ?? null, productName: p?.name ?? null }));
+                }}>
+                <option value="">Select product</option>
+                {filteredProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              {task.label !== "daily" && (
+                <>
+                  <label className="login-label" style={{ marginTop: 12 }}>Due Date *</label>
+                  <input type="date" className="login-input" required
+                    value={task.dueDate ?? ""}
+                    disabled={isTester}
+                    onChange={e => setTask(t => ({ ...t, dueDate: e.target.value || null }))} />
+                </>
+              )}
               {mode === "edit" && (
                 <>
                   <label className="login-label" style={{ marginTop: 12 }}>Status</label>
                   <select className="login-input" value={task.status}
+                    disabled={isTester && task.status === "done"}
                     onChange={e => setTask(t => ({ ...t, status: e.target.value }))}>
-                    {TASK_COLUMNS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                    {TASK_COLUMNS.filter(c => {
+                      if (task.label === "daily" && c.id === "backlog") return false;
+                      if (isTester && c.id === "done") return false;
+                      return true;
+                    }).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                   </select>
                 </>
               )}
-
-              <label className="login-label" style={{ marginTop: 12 }}>Images</label>
-              {task.images?.length > 0 && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-                  {task.images.map((img, i) => (
-                    <div key={i} style={{ position: "relative" }}>
-                      <img src={img.base64 ?? img.url} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 6 }} />
-                      <button type="button" style={{ position: "absolute", top: 0, right: 0, background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", borderRadius: "0 6px 0 6px", cursor: "pointer", fontSize: 11, padding: "1px 5px" }}
-                        onClick={() => setTask(t => ({ ...t, images: t.images.filter((_, j) => j !== i) }))}>✕</button>
-                    </div>
-                  ))}
+              {mode === "edit" && (
+                <div style={{ marginTop: 10, fontSize: 12, color: "#888" }}>
+                  Created: {new Date(task.createdAt).toLocaleDateString()}
                 </div>
               )}
-              <TaskImageUpload onAdd={img => setTask(t => ({ ...t, images: [...t.images, img] }))} />
+              {!isTester && (
+                <>
+                  <label className="login-label" style={{ marginTop: 12 }}>Images</label>
+                  {task.images?.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                      {task.images.map((img, i) => (
+                        <div key={i} style={{ position: "relative" }}>
+                          <img src={img.base64 ?? img.url} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 6 }} />
+                          <button type="button" style={{ position: "absolute", top: 0, right: 0, background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", borderRadius: "0 6px 0 6px", cursor: "pointer", fontSize: 11, padding: "1px 5px" }}
+                            onClick={() => setTask(t => ({ ...t, images: t.images.filter((_, j) => j !== i) }))}>✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <TaskImageUpload onAdd={img => setTask(t => ({ ...t, images: [...t.images, img] }))} />
+                </>
+              )}
             </div>
           </div>
           </div>
 
           <div className="modal-actions" style={{ margin: "16px 28px 24px" }}>
             <button type="button" className="btn-cancel" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn-primary" disabled={saving || !task.title.trim()}>
-              {saving ? "Saving…" : mode === "create" ? "Create Task" : "Save Changes"}
+            <button type="submit" className="btn-primary" disabled={!isValid}>
+              {mode === "create" ? "Create Task" : "Save Changes"}
             </button>
           </div>
         </form>
@@ -2717,22 +3012,32 @@ const TICKET_STATUSES  = ["open", "in-progress", "resolved", "closed"];
 const TICKET_PRIORITIES = ["low", "medium", "high"];
 
 function TicketsPortal({ currentUser, currentRole, onBack, onLogout, onNavigate }) {
-  const [tickets,   setTickets]   = useState([]);
-  const [products,  setProducts]  = useState([]);
-  const [allUsers,  setAllUsers]  = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [modal,     setModal]     = useState(null);
-  const [deleteId,  setDeleteId]  = useState(null);
-  const [filterSt,  setFilterSt]  = useState("all");
-  const [filterPr,  setFilterPr]  = useState("all");
-  const [search,    setSearch]    = useState("");
+  const [tickets,        setTickets]        = useState([]);
+  const [products,       setProducts]       = useState([]);
+  const [allUsers,       setAllUsers]       = useState([]);
+  const [testerProducts, setTesterProducts] = useState(null);
+  const [loading,        setLoading]        = useState(true);
+  const [modal,          setModal]          = useState(null);
+  const [deleteId,       setDeleteId]       = useState(null);
+  const [filterSt,       setFilterSt]       = useState("all");
+  const [filterPr,       setFilterPr]       = useState("all");
+  const [search,         setSearch]         = useState("");
+  const [showLog,        setShowLog]        = useState(false);
 
   const isAdmin    = currentRole === "admin";
   const isReviewer = currentRole === "reviewer";
+  const isTester   = currentRole === "tester";
 
   useEffect(() => {
-    Promise.all([dbGetTickets(), dbGetProducts(), dbGetAllUsers()])
-      .then(([t, p, u]) => { setTickets(t); setProducts(p); setAllUsers(u); setLoading(false); })
+    dbPruneLogs().catch(() => {});
+    const base    = Promise.all([dbGetTickets(), dbGetProducts(), dbGetAllUsers()]);
+    const prodIds = isTester ? dbGetUserProducts(currentUser) : Promise.resolve(null);
+    Promise.all([base, prodIds])
+      .then(([[t, p, u], myProds]) => {
+        setTickets(t); setProducts(p); setAllUsers(u);
+        setTesterProducts(myProds);
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, []);
 
@@ -2740,48 +3045,73 @@ function TicketsPortal({ currentUser, currentRole, onBack, onLogout, onNavigate 
     id: `ticket_${Date.now()}`, title: "", description: "", status: "open",
     priority: "medium", productId: null, productName: null,
     reporter: currentUser, assignee: null, images: [],
-    createdAt: Date.now(), updatedAt: Date.now(),
+    createdAt: Date.now(), updatedAt: Date.now(), dueDate: null, level: "III",
   }});
 
   const openEdit = (ticket) => {
-    if (currentRole === "tester" && ticket.reporter !== currentUser) return;
+    if (!isAdmin && currentRole === "tester" && ticket.reporter !== currentUser) return;
     setModal({ mode: "edit", ticket: { ...ticket } });
   };
 
-  const handleSave = async (ticket) => {
+  const handleSave = (ticket) => {
     const orig = tickets.find(t => t.id === ticket.id);
     ticket.updatedAt = Date.now();
-    await dbSaveTicket(ticket);
 
-    if (ticket.assignee && ticket.assignee !== currentUser) {
-      await dbSaveNotification({
-        id: `notif_${Date.now()}_tick_${ticket.assignee}`,
-        toUsername: ticket.assignee,
-        message: `${currentUser} assigned you a ticket: "${ticket.title}"`,
-        type: "ticket_assigned", refId: ticket.id, refType: "ticket",
-        read: false, createdAt: Date.now(),
-      });
-    }
-
+    // Optimistic update — show ticket and close modal instantly
     setTickets(prev => {
       const idx = prev.findIndex(t => t.id === ticket.id);
       return idx >= 0 ? prev.map(t => t.id === ticket.id ? ticket : t) : [...prev, ticket];
     });
     setModal(null);
+
+    // Persist to DB in background
+    dbSaveTicket(ticket).catch(() => {});
+
+    // Activity log + notification fire in background
+    const isNew = !orig;
+    const changes = [];
+    if (!isNew && orig.status   !== ticket.status)   changes.push(`status: ${orig.status} → ${ticket.status}`);
+    if (!isNew && orig.assignee !== ticket.assignee) changes.push(`assignee: ${orig.assignee ?? "—"} → ${ticket.assignee ?? "—"}`);
+    if (!isNew && orig.priority !== ticket.priority) changes.push(`priority: ${orig.priority} → ${ticket.priority}`);
+    if (!isNew && orig.level    !== ticket.level)    changes.push(`level: ${orig.level ?? "III"} → ${ticket.level ?? "III"}`);
+    dbAppendLog({
+      id: `log_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      refType: "ticket", refId: ticket.id, refTitle: ticket.title,
+      actor: currentUser, action: isNew ? "created" : "edited",
+      detail: changes.join("; "), createdAt: Date.now(),
+    });
+    if (ticket.assignee && ticket.assignee !== currentUser) {
+      dbSaveNotification({
+        id: `notif_${Date.now()}_tick_${ticket.assignee}`,
+        toUsername: ticket.assignee,
+        message: `${currentUser} assigned you a ticket: "${ticket.title}"`,
+        type: "ticket_assigned", refId: ticket.id, refType: "ticket",
+        read: false, createdAt: Date.now(),
+      }).catch(() => {});
+    }
   };
 
   const handleDelete = async () => {
+    const t = tickets.find(t => t.id === deleteId);
+    dbAppendLog({
+      id: `log_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      refType: "ticket", refId: deleteId, refTitle: t?.title ?? deleteId,
+      actor: currentUser, action: "deleted", detail: "", createdAt: Date.now(),
+    });
     await dbDeleteTicket(deleteId);
     setTickets(prev => prev.filter(t => t.id !== deleteId));
     setDeleteId(null);
   };
 
-  const visible = tickets.filter(t =>
-    (isAdmin || isReviewer || t.reporter === currentUser) &&
-    (filterSt === "all" || t.status === filterSt) &&
-    (filterPr === "all" || t.priority === filterPr) &&
-    (!search || t.title.toLowerCase().includes(search.toLowerCase()))
-  );
+  const visible = tickets.filter(t => {
+    if (isAdmin ? false : isReviewer ? t.level === "I" : t.level !== "III") return false;
+    if (!isAdmin && !isReviewer && t.reporter !== currentUser) return false;
+    if (!isAdmin && testerProducts !== null && t.productId && !testerProducts.includes(t.productId)) return false;
+    if (filterSt !== "all" && t.status !== filterSt) return false;
+    if (filterPr !== "all" && t.priority !== filterPr) return false;
+    if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
 
   if (loading) return (
     <div className="app">
@@ -2790,7 +3120,7 @@ function TicketsPortal({ currentUser, currentRole, onBack, onLogout, onNavigate 
         <div className="header-right">
           <button className="btn-secondary-sm" onClick={onBack}>← Portal</button>
           <NotificationBell username={currentUser} onNavigate={onNavigate} />
-          <ProfileMenu username={currentUser} onLogout={onLogout} />
+          <ProfileMenu username={currentUser} role={currentRole} onLogout={onLogout} />
         </div>
       </header>
       <div className="portal-empty"><p>Loading…</p></div>
@@ -2823,13 +3153,15 @@ function TicketsPortal({ currentUser, currentRole, onBack, onLogout, onNavigate 
           </div>
         </div>
       )}
+      {showLog && <LogPanel refType="ticket" onClose={() => setShowLog(false)} />}
       <header className="app-header">
         <div className="header-left"><h1>Tickets</h1></div>
         <div className="header-right">
           <button className="btn-view-report" onClick={openCreate}>+ New Ticket</button>
+          {isAdmin && <button className="btn-secondary-sm" onClick={() => setShowLog(true)}>📋 Log</button>}
           <button className="btn-secondary-sm" onClick={onBack}>← Portal</button>
           <NotificationBell username={currentUser} onNavigate={onNavigate} />
-          <ProfileMenu username={currentUser} onLogout={onLogout} />
+          <ProfileMenu username={currentUser} role={currentRole} onLogout={onLogout} />
         </div>
       </header>
       <main className="app-main">
@@ -2859,12 +3191,14 @@ function TicketsPortal({ currentUser, currentRole, onBack, onLogout, onNavigate 
               <tr>
                 <th>#</th>
                 <th>Title</th>
+                <th>Level</th>
                 <th>Product</th>
                 <th>Priority</th>
                 <th>Reporter</th>
                 <th>Assignee</th>
                 <th>Status</th>
                 <th>Created</th>
+                <th>Due Date</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -2873,12 +3207,20 @@ function TicketsPortal({ currentUser, currentRole, onBack, onLogout, onNavigate 
                 <tr key={t.id}>
                   <td>{i + 1}</td>
                   <td style={{ maxWidth: 200, wordBreak: "break-word" }}>{t.title}</td>
+                  <td><span className={`ticket-level-badge level-${t.level ?? "III"}`}>Level {t.level ?? "III"}</span></td>
                   <td>{t.productName ?? "—"}</td>
                   <td><span className={`priority-${t.priority}`}>{t.priority.charAt(0).toUpperCase() + t.priority.slice(1)}</span></td>
                   <td>{t.reporter}</td>
                   <td>{t.assignee ?? "—"}</td>
                   <td><span className="status-pill">{t.status.replace("-", " ")}</span></td>
                   <td style={{ whiteSpace: "nowrap" }}>{fmtDateTime(t.createdAt)}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {t.dueDate
+                      ? <span className={new Date(t.dueDate) < new Date() && t.status !== "closed" && t.status !== "resolved" ? "due-date-overdue" : "due-date"}>
+                          {new Date(t.dueDate).toLocaleDateString()}
+                        </span>
+                      : "—"}
+                  </td>
                   <td>
                     {(isAdmin || isReviewer || t.reporter === currentUser) &&
                       <button className="btn-view-report sm" onClick={() => openEdit(t)}>Edit</button>}
@@ -2900,28 +3242,47 @@ function TicketsPortal({ currentUser, currentRole, onBack, onLogout, onNavigate 
 
 function TicketModal({ ticket: initTicket, mode, currentUser, currentRole, products, allUsers, onSave, onClose }) {
   const [ticket, setTicket] = useState({ ...initTicket });
-  const [saving, setSaving] = useState(false);
+  const [saving,          setSaving]          = useState(false);
+  const [assigneeProducts, setAssigneeProducts] = useState(null); // null = all
   const isAdmin    = currentRole === "admin";
   const isReviewer = currentRole === "reviewer";
   const isTester   = currentRole === "tester";
 
+  useEffect(() => {
+    if (ticket.assignee) {
+      const assigneeUser = allUsers.find(u => u.username === ticket.assignee);
+      if (assigneeUser?.role === "tester") {
+        dbGetUserProducts(ticket.assignee).then(setAssigneeProducts).catch(() => setAssigneeProducts(null));
+      } else {
+        setAssigneeProducts(null); // admin/reviewer: show all products
+      }
+    } else {
+      setAssigneeProducts(null);
+    }
+  }, [ticket.assignee, allUsers]);
+
   const wordCount = (ticket.description ?? "").trim() === "" ? 0 : (ticket.description ?? "").trim().split(/\s+/).length;
 
   const assignableUsers = allUsers.filter(u => {
+    const lvl = ticket.level ?? "III";
+    if (lvl === "I" && u.role !== "admin") return false;
+    if (lvl === "II" && u.role !== "admin" && u.role !== "reviewer") return false;
     if (isAdmin) return true;
-    if (isReviewer) return u.role === "tester";
+    if (isReviewer) return true;
     return false;
   });
 
-  const canAssign     = isAdmin || isReviewer;
+  const filteredProducts = assigneeProducts !== null
+    ? products.filter(p => assigneeProducts.includes(p.id))
+    : products;
+
+  const canAssign       = isAdmin || isReviewer;
   const canChangeStatus = isAdmin || isReviewer;
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (!ticket.title.trim()) return;
-    setSaving(true);
-    await onSave(ticket);
-    setSaving(false);
+    onSave(ticket);
   };
 
   return (
@@ -2938,7 +3299,6 @@ function TicketModal({ ticket: initTicket, mode, currentUser, currentRole, produ
                 onChange={e => setTicket(t => ({ ...t, title: e.target.value }))}
                 placeholder="Ticket title" required
                  />
-
               <label className="login-label" style={{ marginTop: 12 }}>Description</label>
               <div style={{ position: "relative" }}>
                 <textarea className="login-input" rows={5}
@@ -2955,38 +3315,56 @@ function TicketModal({ ticket: initTicket, mode, currentUser, currentRole, produ
                 </span>
               </div>
             </div>
-
             {/* Right column */}
             <div className="task-modal-right">
-              <label className="login-label">Priority</label>
+              <label className="login-label">Ticket Level</label>
+              <select className="login-input" value={ticket.level ?? "III"}
+                disabled={isTester}
+                onChange={e => {
+                  const newLevel = e.target.value;
+                  setTicket(t => {
+                    const assigneeUser = allUsers.find(u => u.username === t.assignee);
+                    const roleOk = newLevel === "III" ? true
+                      : newLevel === "II" ? (assigneeUser?.role === "admin" || assigneeUser?.role === "reviewer")
+                      : assigneeUser?.role === "admin";
+                    return { ...t, level: newLevel, assignee: roleOk ? t.assignee : null };
+                  });
+                }}>
+                {isAdmin && <option value="I">Level I (Admin)</option>}
+                {(isAdmin || isReviewer) && <option value="II">Level II (Reviewer)</option>}
+                <option value="III">Level III (Tester)</option>
+              </select>
+              <label className="login-label" style={{ marginTop: 12 }}>Priority</label>
               <select className="login-input" value={ticket.priority}
                 onChange={e => setTicket(t => ({ ...t, priority: e.target.value }))}
                 >
                 {TICKET_PRIORITIES.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
               </select>
-
-              <label className="login-label" style={{ marginTop: 12 }}>Product</label>
-              <select className="login-input" value={ticket.productId ?? ""}
-                onChange={e => {
-                  const p = products.find(x => x.id === e.target.value);
-                  setTicket(t => ({ ...t, productId: p?.id ?? null, productName: p?.name ?? null }));
-                }}
-                >
-                <option value="">None</option>
-                {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-
               {canAssign && (
                 <>
                   <label className="login-label" style={{ marginTop: 12 }}>Assignee</label>
                   <select className="login-input" value={ticket.assignee ?? ""}
-                    onChange={e => setTicket(t => ({ ...t, assignee: e.target.value || null }))}>
+                    onChange={e => {
+                      const newAssignee = e.target.value || null;
+                      setTicket(t => ({ ...t, assignee: newAssignee, productId: null, productName: null }));
+                    }}>
                     <option value="">Unassigned</option>
-                    {assignableUsers.map(u => <option key={u.username} value={u.username}>{u.username}</option>)}
+                    {assignableUsers.map(u => <option key={u.username} value={u.username}>{u.username} ({u.role})</option>)}
                   </select>
                 </>
               )}
-
+              <label className="login-label" style={{ marginTop: 12 }}>
+                Product {ticket.assignee && assigneeProducts !== null && <span style={{ fontSize: 11, color: "#888" }}>(for {ticket.assignee})</span>}
+              </label>
+              <select className="login-input" value={ticket.productId ?? ""}
+                onChange={e => {
+                  const p = filteredProducts.find(x => x.id === e.target.value);
+                  setTicket(t => ({ ...t, productId: p?.id ?? null, productName: p?.name ?? null }));
+                }}
+                >
+                <option value="">None</option>
+                {filteredProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
               {canChangeStatus && mode === "edit" && (
                 <>
                   <label className="login-label" style={{ marginTop: 12 }}>Status</label>
@@ -2999,7 +3377,15 @@ function TicketModal({ ticket: initTicket, mode, currentUser, currentRole, produ
                   </select>
                 </>
               )}
-
+              <label className="login-label" style={{ marginTop: 12 }}>Due Date</label>
+              <input type="date" className="login-input"
+                value={ticket.dueDate ?? ""}
+                onChange={e => setTicket(t => ({ ...t, dueDate: e.target.value || null }))} />
+              {mode === "edit" && (
+                <div style={{ marginTop: 10, fontSize: 12, color: "#888" }}>
+                  Created: {new Date(ticket.createdAt).toLocaleDateString()}
+                </div>
+              )}
               <label className="login-label" style={{ marginTop: 12 }}>Images</label>
               {ticket.images?.length > 0 && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
@@ -3016,11 +3402,10 @@ function TicketModal({ ticket: initTicket, mode, currentUser, currentRole, produ
             </div>
           </div>
           </div>
-
           <div className="modal-actions" style={{ margin: "16px 28px 24px" }}>
             <button type="button" className="btn-cancel" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn-primary" disabled={saving || !ticket.title.trim()}>
-              {saving ? "Saving…" : mode === "create" ? "Create Ticket" : "Save Changes"}
+            <button type="submit" className="btn-primary" disabled={!ticket.title.trim()}>
+              {mode === "create" ? "Create Ticket" : "Save Changes"}
             </button>
           </div>
         </form>
@@ -3040,17 +3425,10 @@ function IdleScreen({ session, onStart, onNavigate, onLogout }) {
       <header className="app-header">
         <div className="header-left">
           <BrandTitle />
-          <p className="header-sub">
-            Logged in as <strong style={{ color: "#fff" }}>{session.username}</strong>
-            &nbsp;·&nbsp;
-            <span className="session-role-badge" style={{ background: ROLE_COLORS[role] ?? "#888" }}>
-              {ROLE_LABELS[role] ?? role}
-            </span>
-          </p>
         </div>
         <div className="header-right">
           <NotificationBell username={session.username} onNavigate={onNavigate} />
-          <ProfileMenu username={session.username} onLogout={onLogout} />
+          <ProfileMenu username={session.username} role={session.role} onLogout={onLogout} />
         </div>
       </header>
       <div className="idle-body portal-body">
@@ -3193,7 +3571,7 @@ function TerminatedScreen({ session, rows, onSubmitReport, onNewTest, onLogout }
     <div className="idle-page">
       <header className="app-header">
         <div className="header-left"><BrandTitle /></div>
-        <div className="header-right"><ProfileMenu username={session.username} onLogout={onLogout} /></div>
+        <div className="header-right"><ProfileMenu username={session.username} role={session.role} onLogout={onLogout} /></div>
       </header>
       <div className="idle-body">
         <div className="idle-card">
@@ -3291,6 +3669,75 @@ export default function App() {
       });
     }).catch(() => {});
   }, []);
+
+  // Overdue due-date notifications
+  useEffect(() => {
+    if (!session) return;
+    const DEDUP_KEY = "qa_overdue_notified";
+    const getSent = () => { try { return JSON.parse(localStorage.getItem(DEDUP_KEY) || "{}"); } catch { return {}; } };
+    const markSent = (id) => { const s = getSent(); s[id] = true; localStorage.setItem(DEDUP_KEY, JSON.stringify(s)); };
+
+    const checkOverdue = async () => {
+      try {
+        const [tasks, tickets, allUsers] = await Promise.all([dbGetTasks(), dbGetTickets(), dbGetAllUsers()]);
+        const now = new Date();
+        const sent = getSent();
+
+        const overdueTasks = tasks.filter(t =>
+          t.dueDate && new Date(t.dueDate) < now && t.status !== "done" && !sent[`task_${t.id}`]
+        );
+        const overdueTickets = tickets.filter(t =>
+          t.dueDate && new Date(t.dueDate) < now && t.status !== "closed" && t.status !== "resolved" && !sent[`ticket_${t.id}`]
+        );
+
+        const adminsReviewers = allUsers.filter(u => u.role === "admin" || u.role === "reviewer");
+
+        for (const task of overdueTasks) {
+          const recipients = new Set([
+            ...adminsReviewers.map(u => u.username),
+            ...(task.assignee ? [task.assignee] : []),
+            ...(task.tags ?? []),
+            task.createdBy,
+          ]);
+          const ts = Date.now();
+          await Promise.all([...recipients].map(username =>
+            dbSaveNotification({
+              id: `overdue_task_${task.id}_${username}`,
+              toUsername: username,
+              message: `Task overdue: "${task.title}" was due on ${new Date(task.dueDate).toLocaleDateString()}`,
+              type: "task_overdue", refId: task.id, refType: "task",
+              read: false, createdAt: ts,
+            })
+          ));
+          markSent(`task_${task.id}`);
+        }
+
+        for (const ticket of overdueTickets) {
+          const recipients = new Set([
+            ...adminsReviewers.map(u => u.username),
+            ...(ticket.assignee ? [ticket.assignee] : []),
+            ticket.reporter,
+          ]);
+          const ts = Date.now();
+          await Promise.all([...recipients].map(username =>
+            dbSaveNotification({
+              id: `overdue_ticket_${ticket.id}_${username}`,
+              toUsername: username,
+              message: `Ticket overdue: "${ticket.title}" was due on ${new Date(ticket.dueDate).toLocaleDateString()}`,
+              type: "ticket_overdue", refId: ticket.id, refType: "ticket",
+              read: false, createdAt: ts,
+            })
+          ));
+          markSent(`ticket_${ticket.id}`);
+        }
+      } catch { /* silent */ }
+    };
+
+    checkOverdue();
+    const interval = setInterval(checkOverdue, 5 * 60 * 1000); // re-check every 5 minutes
+    return () => clearInterval(interval);
+  }, [session?.username]);
+
 
   // Countdown
   useEffect(() => {
@@ -3435,15 +3882,15 @@ export default function App() {
   if (!session) return <LoginPage onLogin={handleLogin} />;
   if (view === "review")    return <ReviewPortal    currentUser={session.username} currentRole={session.role} onBack={() => setView(null)} onLogout={handleLogout} onNavigate={handleNavigate} />;
   if (view === "reports")   return <ReportsPortal   currentUser={session.username} currentRole={session.role} onBack={() => setView(null)} onLogout={handleLogout} onNavigate={handleNavigate} />;
-  if (view === "accounts")  return <AccountsPortal  currentUser={session.username} onBack={() => setView(null)} onLogout={handleLogout} />;
-  if (view === "products")  return <ProductsPortal  currentUser={session.username} onBack={() => setView(null)} onLogout={handleLogout} />;
+  if (view === "accounts")  return <AccountsPortal  currentUser={session.username} currentRole={session.role} onBack={() => setView(null)} onLogout={handleLogout} />;
+  if (view === "products")  return <ProductsPortal  currentUser={session.username} currentRole={session.role} onBack={() => setView(null)} onLogout={handleLogout} />;
   if (view === "planner")   return <KanbanPortal    currentUser={session.username} currentRole={session.role} onBack={() => setView(null)} onLogout={handleLogout} onNavigate={handleNavigate} />;
   if (view === "tickets")   return <TicketsPortal   currentUser={session.username} currentRole={session.role} onBack={() => setView(null)} onLogout={handleLogout} onNavigate={handleNavigate} />;
-  if (view === "profiles")  return <TestingProfilesPortal currentUser={session.username}
+  if (view === "profiles")  return <TestingProfilesPortal currentUser={session.username} currentRole={session.role}
     onEdit={p => { setEditingProfile(p); setView("profile-editor"); }}
     onBack={() => setView(null)} onLogout={handleLogout} />;
   if (view === "profile-editor" && editingProfile) return <ProfileEditorPortal
-    profile={editingProfile} currentUser={session.username}
+    profile={editingProfile} currentUser={session.username} currentRole={session.role}
     onBack={() => setView("profiles")} onLogout={handleLogout} />;
   if (session.testingStart && session.testingEnd)
     return <TerminatedScreen session={session} rows={rows}
@@ -3489,7 +3936,8 @@ export default function App() {
             <span className="upload-progress">{uploaded}/{rows.length} uploaded</span>
             <button className="btn-view-report" onClick={handleSubmitReport}>Submit Report</button>
             <button className="btn-danger-outline" onClick={() => setShowTerminate(true)}>Terminate</button>
-            <ProfileMenu username={session.username} onLogout={handleLogout} />
+            <NotificationBell username={session.username} onNavigate={() => {}} />
+            <ProfileMenu username={session.username} role={session.role} onLogout={handleLogout} />
           </div>
         </header>
         <main className="app-main">
@@ -3552,7 +4000,6 @@ export default function App() {
       {showTerminate    && <TerminateModal onConfirm={handleConfirmTerminate} onCancel={() => setShowTerminate(false)} />}
       {validationErrors && <ValidationModal missing={validationErrors} onClose={() => setValidationErrors(null)} />}
       {submitSuccess    && <SubmitSuccessModal isTester={submitSuccess.isTester} onBackToPortal={handleSubmitSuccessBack} onViewReports={handleSubmitSuccessReports} />}
-
       <header className="app-header">
         <div className="header-left">
           <BrandTitle />
@@ -3565,10 +4012,8 @@ export default function App() {
           <ProfileMenu username={session.username} onLogout={handleLogout} />
         </div>
       </header>
-
       <main className="app-main">
         <SummaryBar rows={rows} />
-
         <div className="toolbar">
           <div className="filter-chips">
             {categories.map((cat) => (
@@ -3582,7 +4027,6 @@ export default function App() {
           <input type="search" placeholder="Search questions…" className="search-box"
             value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-
         <div className="table-wrap">
           <table className="qa-table">
             <thead>
@@ -3648,3 +4092,4 @@ export default function App() {
     </div>
   );
 }
+

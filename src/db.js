@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import * as local from "./auth";
 import { USE_LOCAL } from "./config";
+import { driveEnabled, appendLog as driveAppendLog, readLogs as driveReadLogs, pruneOldLogs as drivePruneOldLogs } from "./drive";
 
 // ── Users ─────────────────────────────────────────────────────────────────────
 export async function dbGetAllUsers() {
@@ -214,6 +215,11 @@ export async function dbGetTasks() {
     images:      row.images ?? [],
     createdAt:   row.created_at,
     updatedAt:   row.updated_at,
+    dueDate:     row.due_date    ?? null,
+    label:       row.label       ?? "once",
+    recurTime:   row.recur_time  ?? null,
+    templateId:  row.template_id ?? null,
+    level:       row.level       ?? "III",
   }));
 }
 
@@ -232,6 +238,11 @@ export async function dbSaveTask(task) {
     images:       task.images ?? [],
     created_at:   task.createdAt,
     updated_at:   task.updatedAt,
+    due_date:     task.dueDate     ?? null,
+    label:        task.label       ?? "once",
+    recur_time:   task.recurTime   ?? null,
+    template_id:  task.templateId  ?? null,
+    level:        task.level       ?? "III",
   });
   if (error) throw error;
 }
@@ -263,6 +274,11 @@ export async function dbGetTickets() {
     images:      row.images ?? [],
     createdAt:   row.created_at,
     updatedAt:   row.updated_at,
+    dueDate:     row.due_date    ?? null,
+    label:       row.label       ?? "once",
+    recurTime:   row.recur_time  ?? null,
+    templateId:  row.template_id ?? null,
+    level:       row.level       ?? "III",
   }));
 }
 
@@ -281,6 +297,11 @@ export async function dbSaveTicket(ticket) {
     images:       ticket.images ?? [],
     created_at:   ticket.createdAt,
     updated_at:   ticket.updatedAt,
+    due_date:     ticket.dueDate     ?? null,
+    label:        ticket.label       ?? "once",
+    recur_time:   ticket.recurTime   ?? null,
+    template_id:  ticket.templateId  ?? null,
+    level:        ticket.level       ?? "III",
   });
   if (error) throw error;
 }
@@ -343,4 +364,20 @@ export async function dbClearNotifications(username) {
   if (USE_LOCAL) { local.clearNotifications(username); return; }
   const { error } = await supabase.from("qa_notifications").delete().eq("to_username", username);
   if (error) throw error;
+}
+
+// ── Activity log (Drive when configured, otherwise localStorage) ──────────────
+export async function dbAppendLog(entry) {
+  if (driveEnabled) { driveAppendLog(entry); return; } // fire-and-forget
+  local.appendLog(entry);
+}
+
+export async function dbReadLogs() {
+  if (driveEnabled) return driveReadLogs();
+  return local.getLogs();
+}
+
+export async function dbPruneLogs() {
+  if (driveEnabled) { drivePruneOldLogs(); return; } // fire-and-forget
+  local.pruneLogs();
 }

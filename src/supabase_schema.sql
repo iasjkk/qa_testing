@@ -1,5 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════
 -- Run this ENTIRE script once in Supabase → SQL Editor → New query
+-- Safe to re-run on an existing database (all statements are idempotent)
 -- ═══════════════════════════════════════════════════════════════════
 
 -- ── Users ─────────────────────────────────────────────────────────
@@ -58,7 +59,11 @@ CREATE TABLE IF NOT EXISTS public.qa_user_products (
   PRIMARY KEY (username, product_id)
 );
 
--- ── Planner tasks ────────────────────────────────────────────────
+-- ── Planner tasks ─────────────────────────────────────────────────
+-- label      : 'once' | 'daily'   (daily = recurring template)
+-- recur_time : HH:MM (24h) for daily tasks
+-- template_id: set on daily instances; references the template task id
+-- level      : 'I' (admin) | 'II' (reviewer+admin) | 'III' (everyone)
 CREATE TABLE IF NOT EXISTS public.qa_tasks (
   id           TEXT PRIMARY KEY,
   title        TEXT NOT NULL,
@@ -71,10 +76,19 @@ CREATE TABLE IF NOT EXISTS public.qa_tasks (
   tags         JSONB DEFAULT '[]',
   images       JSONB DEFAULT '[]',
   created_at   BIGINT,
-  updated_at   BIGINT
+  updated_at   BIGINT,
+  due_date     TEXT,
+  label        TEXT DEFAULT 'once',
+  recur_time   TEXT,
+  template_id  TEXT,
+  level        TEXT DEFAULT 'III'
 );
 
 -- ── Tickets ───────────────────────────────────────────────────────
+-- label      : 'once' | 'daily'
+-- recur_time : HH:MM (24h) for daily tickets
+-- template_id: set on daily instances; references the template ticket id
+-- level      : 'I' (admin) | 'II' (reviewer+admin) | 'III' (everyone)
 CREATE TABLE IF NOT EXISTS public.qa_tickets (
   id           TEXT PRIMARY KEY,
   title        TEXT NOT NULL,
@@ -87,7 +101,12 @@ CREATE TABLE IF NOT EXISTS public.qa_tickets (
   assignee     TEXT,
   images       JSONB DEFAULT '[]',
   created_at   BIGINT,
-  updated_at   BIGINT
+  updated_at   BIGINT,
+  due_date     TEXT,
+  label        TEXT DEFAULT 'once',
+  recur_time   TEXT,
+  template_id  TEXT,
+  level        TEXT DEFAULT 'III'
 );
 
 -- ── Notifications ─────────────────────────────────────────────────
@@ -102,7 +121,21 @@ CREATE TABLE IF NOT EXISTS public.qa_notifications (
   created_at  BIGINT
 );
 
--- ── Disable RLS ───────────────────────────────────────────────────
+-- ── Upgrade columns (safe to run on tables that already exist) ────
+-- These add any columns that were introduced after initial deployment.
+ALTER TABLE public.qa_tasks    ADD COLUMN IF NOT EXISTS due_date     TEXT;
+ALTER TABLE public.qa_tasks    ADD COLUMN IF NOT EXISTS label        TEXT DEFAULT 'once';
+ALTER TABLE public.qa_tasks    ADD COLUMN IF NOT EXISTS recur_time   TEXT;
+ALTER TABLE public.qa_tasks    ADD COLUMN IF NOT EXISTS template_id  TEXT;
+ALTER TABLE public.qa_tasks    ADD COLUMN IF NOT EXISTS level        TEXT DEFAULT 'III';
+
+ALTER TABLE public.qa_tickets  ADD COLUMN IF NOT EXISTS due_date     TEXT;
+ALTER TABLE public.qa_tickets  ADD COLUMN IF NOT EXISTS label        TEXT DEFAULT 'once';
+ALTER TABLE public.qa_tickets  ADD COLUMN IF NOT EXISTS recur_time   TEXT;
+ALTER TABLE public.qa_tickets  ADD COLUMN IF NOT EXISTS template_id  TEXT;
+ALTER TABLE public.qa_tickets  ADD COLUMN IF NOT EXISTS level        TEXT DEFAULT 'III';
+
+-- ── Disable RLS (app handles auth internally) ─────────────────────
 ALTER TABLE public.qa_users         DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.qa_submissions   DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.qa_profiles      DISABLE ROW LEVEL SECURITY;
