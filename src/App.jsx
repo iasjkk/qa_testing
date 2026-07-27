@@ -36,6 +36,11 @@ const CATEGORY_COLORS = {
 
 // Fixed "random-looking" preset marks for the default question set
 const PRESET_MARKS = [10,15,10,20,15,10,10,15,10,20,15,10,10,20,15,10,15,20,10,15,20,10,15,10,15,20,10,15,10,15];
+const roleLabels = {
+  admin: "Administration",
+  reviewer: "Manager",
+  tester: "Staff",
+};
 
 function getActiveQuestions() {
   return QUESTIONS;
@@ -1892,7 +1897,7 @@ function ProfilePickerPortal({ mode, session, onPick, onCancel, onLogout }) {
         <div className="idle-body">
           <div className="tp-empty">
             <div className="tp-empty-icon">🔒</div>
-            <h3>No Products Assigned</h3>
+            <h3>No Store Assigned</h3>
             <p>You don't have access to any products yet. Contact your admin to get product access assigned to your account.</p>
             <button className="btn-secondary-sm" style={{ marginTop: 20 }} onClick={onCancel}>← Back to Portal</button>
           </div>
@@ -2059,7 +2064,7 @@ function ProductsPortal({ currentUser, currentRole, onBack, onLogout }) {
       )}
       <header className="app-header">
         <div className="header-left">
-          <h1>Manage Products</h1>
+          <h1>Manage Stores</h1>
           <p className="header-sub">{products.length} product{products.length !== 1 ? "s" : ""} · assign access per user in Manage Accounts</p>
         </div>
         <div className="header-right">
@@ -2073,8 +2078,8 @@ function ProductsPortal({ currentUser, currentRole, onBack, onLogout }) {
         {loading ? <div className="portal-empty"><p>Loading products…</p></div> : products.length === 0 ? (
           <div className="tp-empty">
             <div className="tp-empty-icon">🏷️</div>
-            <h3>No Products Yet</h3>
-            <p>Create products (PE, PT, PL…) then assign users to each product in Manage Accounts.</p>
+            <h3>No Stores Yet</h3>
+            <p>Create stores BR Shivpur, BR DLW... then assign users to each store in Manage Accounts.</p>
             <button className="btn-start btn-start-red" style={{ marginTop: 20 }} onClick={() => setCreating(true)}>+ Create First Product</button>
           </div>
         ) : (
@@ -2240,7 +2245,7 @@ function AccountsPortal({ currentUser, currentRole, onBack, onLogout }) {
             <h3>Product Access — {accessModal.username}</h3>
             <p style={{ marginBottom: 12 }}>Select which products this user can test and see reports for.</p>
             {allProducts.length === 0
-              ? <p style={{ color: "#aaa", fontSize: 13 }}>No products created yet. Create products in Manage Products first.</p>
+              ? <p style={{ color: "#aaa", fontSize: 13 }}>No stores created yet. Create stores in Manage stores first.</p>
               : <div className="prod-access-list">
                   {allProducts.map(p => (
                     <label key={p.id} className="prod-access-item">
@@ -2351,7 +2356,7 @@ function AccountsPortal({ currentUser, currentRole, onBack, onLogout }) {
                     <div className="report-actions">
                       <button className="btn-upload small" disabled={accessLoading}
                         onClick={() => openAccessModal(u.username)}>
-                        🏷️ Products
+                        🏷️ Stores
                       </button>
                       <button className="btn-upload small"
                         onClick={() => { setResetTarget(u.username); setNewPw(""); setPwError(""); }}>
@@ -2887,7 +2892,7 @@ function TaskModal({ task: initTask, mode, currentUser, currentRole, products, a
                 {(isAdmin || isReviewer) && <option value="II">Level II (Reviewer)</option>}
                 <option value="III">Level III (Tester)</option>
               </select>
-              <label className="login-label" style={{ marginTop: 12 }}>Type *</label>
+              <label className="login-label" style={{ marginTop: 12 }}>Ticket Type *</label>
               <select className="login-input" value={task.label ?? "once"}
                 disabled={isTester}
                 onChange={e => setTask(t => ({ ...t, label: e.target.value, recurTime: e.target.value === "once" ? null : t.recurTime, dueDate: e.target.value === "daily" ? null : t.dueDate }))}>
@@ -2909,11 +2914,11 @@ function TaskModal({ task: initTask, mode, currentUser, currentRole, products, a
                   <select className="login-input" value={task.assignee ?? ""}
                     onChange={e => setTask(t => ({ ...t, assignee: e.target.value || null, ...(isTester ? {} : { productId: null, productName: null }) }))}>
                     <option value="">{isTester ? "— assign to reviewer / admin —" : "Unassigned"}</option>
-                    {assignableUsers.map(u => <option key={u.username} value={u.username}>{u.username} ({u.role})</option>)}
+                    {assignableUsers.map(u => <option key={u.username} value={u.username}>{u.username} ({roleLabels[u.role] || u.role})</option>)}
                   </select>
                 </>
               )}
-              <label className="login-label" style={{ marginTop: 12 }}>Product *</label>
+              <label className="login-label" style={{ marginTop: 12 }}>Store *</label>
               <select className="login-input" value={task.productId ?? ""}
                 disabled={isTester}
                 onChange={e => {
@@ -3343,7 +3348,7 @@ function TicketModal({ ticket: initTicket, mode, currentUser, currentRole, produ
                       setTicket(t => ({ ...t, assignee: newAssignee, productId: null, productName: null }));
                     }}>
                     <option value="">Unassigned</option>
-                    {assignableUsers.map(u => <option key={u.username} value={u.username}>{u.username} ({u.role})</option>)}
+                    {assignableUsers.map(u => <option key={u.username} value={u.username}>{u.username} ({roleLabels[u.role] || u.role})</option>)}
                   </select>
                 </>
               )}
