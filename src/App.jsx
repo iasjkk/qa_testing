@@ -2,26 +2,54 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import { QUESTIONS } from "./data/questions";
 import LoginPage from "./LoginPage";
 import {
-  getSession, logout, startTesting, terminateTesting, resetTesting,
-  getScores, saveScores, clearScores,
-  saveSessionQuestions, getSessionQuestions, clearSessionQuestions,
+  getSession,
+  logout,
+  startTesting,
+  terminateTesting,
+  resetTesting,
+  getScores,
+  saveScores,
+  clearScores,
+  saveSessionQuestions,
+  getSessionQuestions,
+  clearSessionQuestions
 } from "./auth";
 import {
-  dbGetAllUsers, dbUpdateRole, dbResetPassword, dbDeleteUser, dbSignup,
-  dbGetSubmissions, dbSaveSubmission, dbDeleteSubmission,
-  dbGetProfiles, dbSaveProfile, dbDeleteProfile,
-  dbGetProducts, dbSaveProduct, dbDeleteProduct,
-  dbGetUserProducts, dbSetUserProducts,
-  dbGetTasks, dbSaveTask, dbDeleteTask,
-  dbGetTickets, dbSaveTicket, dbDeleteTicket,
-  dbGetNotifications, dbSaveNotification, dbMarkNotificationRead, dbMarkAllNotificationsRead, dbClearNotifications,
-  dbAppendLog, dbReadLogs, dbPruneLogs,
+  dbGetAllUsers,
+  dbUpdateRole,
+  dbResetPassword,
+  dbDeleteUser,
+  dbSignup,
+  dbGetSubmissions,
+  dbSaveSubmission,
+  dbDeleteSubmission, // Ensure dbDeleteSubmission is imported
+  dbGetProfiles,
+  dbSaveProfile,
+  dbGetProducts,
+  dbSaveProduct,
+  dbDeleteProduct,
+  dbGetUserProducts,
+  dbSetUserProducts,
+  dbGetTasks,
+  dbSaveTask,
+  dbDeleteTask,
+  dbGetTickets,
+  dbSaveTicket,
+  dbDeleteTicket,
+  dbGetNotifications,
+  dbSaveNotification,
+  dbMarkNotificationRead,
+  dbMarkAllNotificationsRead,
+  dbClearNotifications,
+  dbAppendLog,
+  dbReadLogs,
+  dbPruneLogs
 } from "./db";
 import { driveEnabled, uploadPhoto, deleteSubmissionPhotos } from "./drive";
 import logo from "./assets/logo.png";
 import "./App.css";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────// ── Constants ─────────────────────────────────────────────────────────────────
 const SESSION_DURATION = 12 * 60 * 60 * 1000;
 const TESTER_DURATION  = 60 * 60 * 1000;
 

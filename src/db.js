@@ -58,6 +58,159 @@ export async function dbGetAllUsers() {
   return data;
 }
 
+export async function dbGetSubmissions() {
+  if (USE_LOCAL) return local.getSubmissions();
+
+  if (USE_GOOGLE_SHEETS) {
+    const result = await fetchGoogleSheets("getRecords", "qa_submissions");
+
+    return result.records
+      .sort((a, b) => (b.end_time ?? 0) - (a.end_time ?? 0))
+      .map(row => ({
+        id: row.id,
+        type: row.type,
+        username: row.username,
+        profileName: row.profile_name,
+        productId: row.product_id ?? null,
+        productName: row.product_name ?? null,
+        startTime: row.start_time,
+        endTime: row.end_time,
+        rows: row.rows,
+        review: row.review ?? null,
+      }));
+  }
+
+  const { data, error } = await supabase
+    .from("qa_submissions")
+    .select("*")
+    .order("end_time", { ascending: false });
+
+  if (error) throw error;
+
+  return data.map(row => ({
+    id: row.id,
+    type: row.type,
+    username: row.username,
+    profileName: row.profile_name,
+    productId: row.product_id ?? null,
+    productName: row.product_name ?? null,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    rows: row.rows,
+    review: row.review,
+  }));
+}
+
+
+export async function dbSaveSubmission(sub) {
+  if (USE_LOCAL) {
+    local.saveSubmission(sub);
+    return;
+  }
+
+  if (USE_GOOGLE_SHEETS) {
+    const recordData = {
+      id: sub.id,
+      type: sub.type,
+      username: sub.username,
+      profile_name: sub.profileName ?? null,
+      product_id: sub.productId ?? null,
+      product_name: sub.productName ?? null,
+      start_time: sub.startTime,
+      end_time: sub.endTime,
+      rows: sub.rows,
+      review: sub.review ?? null,
+    };
+
+    const existing = await fetchGoogleSheets(
+      "getRecords",
+      "qa_submissions"
+    );
+
+    const found = existing.records.find(
+      row => row.id === sub.id
+    );
+
+    let result;
+
+    if (found) {
+      result = await fetchGoogleSheets(
+        "updateRecord",
+        "qa_submissions",
+        {
+          recordId: sub.id,
+          updates: recordData,
+        }
+      );
+    } else {
+      result = await fetchGoogleSheets(
+        "createRecord",
+        "qa_submissions",
+        {
+          recordData,
+        }
+      );
+    }
+
+    if (!result.success) {
+      throw new Error(result.error || "Failed to save submission.");
+    }
+
+    return;
+  }
+
+  const { error } = await supabase
+    .from("qa_submissions")
+    .upsert({
+      id: sub.id,
+      type: sub.type,
+      username: sub.username,
+      profile_name: sub.profileName ?? null,
+      product_id: sub.productId ?? null,
+      product_name: sub.productName ?? null,
+      start_time: sub.startTime,
+      end_time: sub.endTime,
+      rows: sub.rows,
+      review: sub.review ?? null,
+    });
+
+  if (error) throw error;
+}
+
+export async function dbDeleteUser(username) {
+  if (USE_LOCAL) {
+    local.deleteAccount(username);
+    return { success: true };
+  }
+
+  if (USE_GOOGLE_SHEETS) {
+    const result = await fetchGoogleSheets(
+      "deleteRecord",
+      "qa_users",
+      { recordId: username } // Assumes username is the record identifier
+    );
+
+    if (result.success) {
+      return { success: true };
+    }
+
+    return {
+      error: result.error || "Failed to delete user."
+    };
+  }
+
+  const { error } = await supabase
+    .from("qa_users")
+    .delete()
+    .eq("username", username);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  return { success: true };
+}
+
 export async function dbLogin(username, password) {
   if (USE_LOCAL) {
     const res = local.login(username, password);
@@ -83,6 +236,431 @@ export async function dbLogin(username, password) {
   if (error || !data)       return { error: "Invalid username or password." };
   if (data.password !== password) return { error: "Invalid username or password." };
   return { success: true, user: data };
+}
+
+export async function dbSetUserProducts(username, productIds) {
+  if (USE_LOCAL) {
+    local.setUserProducts(username, productIds);
+    return;
+  }
+
+  if (USE_GOOGLE_SHEETS) {
+    // Remove existing user-product mappings
+    const existing = await fetchGoogleSheets(
+      "getRecords",
+      "qa_user_products"
+    );
+
+    const userProducts = existing.records.filter(
+      row => row.username === username
+    );
+
+    for (const row of userProducts) {
+      await fetchGoogleSheets(
+        "deleteRecord",
+        "qa_user_products",
+        {
+          recordId: row.id ?? `${row.username}_${row.product_id}`,
+        }
+      );
+    }
+
+    // Add new mappings
+    if (productIds.length === 0) return;
+
+    for (const productId of productIds) {
+      const result = await fetchGoogleSheets(
+        "createRecord",
+        "qa_user_products",
+        {
+          recordData: {
+            username,
+            product_id: productId,
+          },
+        }
+      );
+
+      if (!result.success) {
+        throw new Error(
+          result.error || "Failed to save user products."
+        );
+      }
+    }
+
+    return;
+  }
+
+  await supabase
+    .from("qa_user_products")
+    .delete()
+    .eq("username", username);
+
+  if (productIds.length === 0) return;
+
+  const { error } = await supabase
+    .from("qa_user_products")
+    .insert(
+      productIds.map(pid => ({
+        username,
+        product_id: pid,
+      }))
+    );
+
+  if (error) throw error;
+}
+
+export async function dbSaveTicket(ticket) {
+  if (USE_LOCAL) {
+    local.saveTicket(ticket);
+    return;
+  }
+
+  if (USE_GOOGLE_SHEETS) {
+    const recordData = {
+      id: ticket.id,
+      title: ticket.title,
+      description: ticket.description ?? "",
+      status: ticket.status,
+      priority: ticket.priority,
+      product_id: ticket.productId ?? null,
+      product_name: ticket.productName ?? null,
+      reporter: ticket.reporter,
+      assignee: ticket.assignee ?? null,
+      images: ticket.images ?? [],
+      created_at: ticket.createdAt,
+      updated_at: ticket.updatedAt,
+      due_date: ticket.dueDate ?? null,
+      label: ticket.label ?? "once",
+      recur_time: ticket.recurTime ?? null,
+      template_id: ticket.templateId ?? null,
+      level: ticket.level ?? "III",
+    };
+
+    const existing = await fetchGoogleSheets(
+      "getRecords",
+      "qa_tickets"
+    );
+
+    const found = existing.records.find(
+      row => row.id === ticket.id
+    );
+
+    let result;
+
+    if (found) {
+      result = await fetchGoogleSheets(
+        "updateRecord",
+        "qa_tickets",
+        {
+          recordId: ticket.id,
+          updates: recordData,
+        }
+      );
+    } else {
+      result = await fetchGoogleSheets(
+        "createRecord",
+        "qa_tickets",
+        {
+          recordData,
+        }
+      );
+    }
+
+    if (!result.success) {
+      throw new Error(result.error || "Failed to save ticket.");
+    }
+
+    return;
+  }
+
+  const { error } = await supabase
+    .from("qa_tickets")
+    .upsert({
+      id: ticket.id,
+      title: ticket.title,
+      description: ticket.description ?? "",
+      status: ticket.status,
+      priority: ticket.priority,
+      product_id: ticket.productId ?? null,
+      product_name: ticket.productName ?? null,
+      reporter: ticket.reporter,
+      assignee: ticket.assignee ?? null,
+      images: ticket.images ?? [],
+      created_at: ticket.createdAt,
+      updated_at: ticket.updatedAt,
+      due_date: ticket.dueDate ?? null,
+      label: ticket.label ?? "once",
+      recur_time: ticket.recurTime ?? null,
+      template_id: ticket.templateId ?? null,
+      level: ticket.level ?? "III",
+    });
+
+  if (error) throw error;
+}
+
+export async function dbSaveTask(task) {
+  if (USE_LOCAL) {
+    local.saveTask(task);
+    return;
+  }
+
+  if (USE_GOOGLE_SHEETS) {
+    const recordData = {
+      id: task.id,
+      title: task.title,
+      description: task.description ?? "",
+      status: task.status,
+      product_id: task.productId ?? null,
+      product_name: task.productName ?? null,
+      assignee: task.assignee ?? null,
+      created_by: task.createdBy,
+      tags: task.tags ?? [],
+      images: task.images ?? [],
+      created_at: task.createdAt,
+      updated_at: task.updatedAt,
+      due_date: task.dueDate ?? null,
+      label: task.label ?? "once",
+      recur_time: task.recurTime ?? null,
+      template_id: task.templateId ?? null,
+      level: task.level ?? "III",
+    };
+
+    const existing = await fetchGoogleSheets(
+      "getRecords",
+      "qa_tasks"
+    );
+
+    const found = existing.records.find(
+      row => row.id === task.id
+    );
+
+    let result;
+
+    if (found) {
+      result = await fetchGoogleSheets(
+        "updateRecord",
+        "qa_tasks",
+        {
+          recordId: task.id,
+          updates: recordData,
+        }
+      );
+    } else {
+      result = await fetchGoogleSheets(
+        "createRecord",
+        "qa_tasks",
+        {
+          recordData,
+        }
+      );
+    }
+
+    if (!result.success) {
+      throw new Error(result.error || "Failed to save task.");
+    }
+
+    return;
+  }
+
+  const { error } = await supabase
+    .from("qa_tasks")
+    .upsert({
+      id: task.id,
+      title: task.title,
+      description: task.description ?? "",
+      status: task.status,
+      product_id: task.productId ?? null,
+      product_name: task.productName ?? null,
+      assignee: task.assignee ?? null,
+      created_by: task.createdBy,
+      tags: task.tags ?? [],
+      images: task.images ?? [],
+      created_at: task.createdAt,
+      updated_at: task.updatedAt,
+      due_date: task.dueDate ?? null,
+      label: task.label ?? "once",
+      recur_time: task.recurTime ?? null,
+      template_id: task.templateId ?? null,
+      level: task.level ?? "III",
+    });
+
+  if (error) throw error;
+}
+
+export async function dbSaveProfile(profile) {
+  if (USE_LOCAL) {
+    local.saveProfile(profile);
+    return;
+  }
+
+  if (USE_GOOGLE_SHEETS) {
+    const recordData = {
+      id: profile.id,
+      name: profile.name,
+      created_at: profile.createdAt,
+      questions: profile.questions,
+    };
+
+    const existing = await fetchGoogleSheets(
+      "getRecords",
+      "qa_profiles"
+    );
+
+    const found = existing.records.find(
+      row => row.id === profile.id
+    );
+
+    let result;
+
+    if (found) {
+      result = await fetchGoogleSheets(
+        "updateRecord",
+        "qa_profiles",
+        {
+          recordId: profile.id,
+          updates: recordData,
+        }
+      );
+    } else {
+      result = await fetchGoogleSheets(
+        "createRecord",
+        "qa_profiles",
+        {
+          recordData,
+        }
+      );
+    }
+
+    if (!result.success) {
+      throw new Error(result.error || "Failed to save profile.");
+    }
+
+    return;
+  }
+
+  const { error } = await supabase
+    .from("qa_profiles")
+    .upsert({
+      id: profile.id,
+      name: profile.name,
+      created_at: profile.createdAt,
+      questions: profile.questions,
+    });
+
+  if (error) throw error;
+}
+
+export async function dbSaveProduct(product) {
+  if (USE_LOCAL) {
+    local.saveProduct(product);
+    return;
+  }
+
+  if (USE_GOOGLE_SHEETS) {
+    const recordData = {
+      id: product.id,
+      name: product.name,
+      description: product.description ?? "",
+      created_at: product.createdAt ?? Date.now(),
+    };
+
+    const existing = await fetchGoogleSheets(
+      "getRecords",
+      "qa_products"
+    );
+
+    const found = existing.records.find(
+      row => row.id === product.id
+    );
+
+    let result;
+
+    if (found) {
+      result = await fetchGoogleSheets(
+        "updateRecord",
+        "qa_products",
+        {
+          recordId: product.id,
+          updates: recordData,
+        }
+      );
+    } else {
+      result = await fetchGoogleSheets(
+        "createRecord",
+        "qa_products",
+        {
+          recordData,
+        }
+      );
+    }
+
+    if (!result.success) {
+      throw new Error(result.error || "Failed to save product.");
+    }
+
+    return;
+  }
+
+  const { error } = await supabase.from("qa_products").upsert({
+    id: product.id,
+    name: product.name,
+    description: product.description ?? "",
+    created_at: product.createdAt ?? Date.now(),
+  });
+
+  if (error) throw error;
+}
+
+export async function dbGetProfiles() {
+  if (USE_LOCAL) return local.getProfiles();
+
+  if (USE_GOOGLE_SHEETS) {
+    const result = await fetchGoogleSheets("getRecords", "qa_profiles");
+
+    return result.records
+      .sort((a, b) => (a.created_at ?? 0) - (b.created_at ?? 0))
+      .map(row => ({
+        id: row.id,
+        name: row.name,
+        createdAt: row.created_at,
+        questions: row.questions,
+      }));
+  }
+
+  const { data, error } = await supabase
+    .from("qa_profiles")
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+
+  return data.map(row => ({
+    id: row.id,
+    name: row.name,
+    createdAt: row.created_at,
+    questions: row.questions,
+  }));
+}
+
+export async function dbGetUserProducts(username) {
+  if (USE_LOCAL) return local.getUserProducts(username);
+
+  if (USE_GOOGLE_SHEETS) {
+    const result = await fetchGoogleSheets("getRecords", "qa_user_products");
+
+    return result.records
+      .filter(row => row.username === username)
+      .map(row => row.product_id);
+  }
+
+  const { data, error } = await supabase
+    .from("qa_user_products")
+    .select("product_id")
+    .eq("username", username);
+
+  if (error) throw error;
+
+  return data.map(r => r.product_id);
 }
 
 export async function dbSignup(username, password, { name = "", phone = "" } = {}) {
@@ -117,6 +695,151 @@ export async function dbSignup(username, password, { name = "", phone = "" } = {
     return { error: error.message };
   }
   return { success: true };
+}
+
+export async function dbGetTasks() {
+  if (USE_LOCAL) return local.getTasks();
+
+  if (USE_GOOGLE_SHEETS) {
+    const result = await fetchGoogleSheets("getRecords", "qa_tasks");
+
+    return result.records
+      .sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0))
+      .map(row => ({
+        id: row.id,
+        title: row.title,
+        description: row.description ?? "",
+        status: row.status,
+        productId: row.product_id ?? null,
+        productName: row.product_name ?? null,
+        assignee: row.assignee ?? null,
+        createdBy: row.created_by,
+        tags: row.tags ?? [],
+        images: row.images ?? [],
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        dueDate: row.due_date ?? null,
+        label: row.label ?? "once",
+        recurTime: row.recur_time ?? null,
+        templateId: row.template_id ?? null,
+        level: row.level ?? "III",
+      }));
+  }
+
+  const { data, error } = await supabase
+    .from("qa_tasks")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  return data.map(row => ({
+    id: row.id,
+    title: row.title,
+    description: row.description ?? "",
+    status: row.status,
+    productId: row.product_id ?? null,
+    productName: row.product_name ?? null,
+    assignee: row.assignee ?? null,
+    createdBy: row.created_by,
+    tags: row.tags ?? [],
+    images: row.images ?? [],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    dueDate: row.due_date ?? null,
+    label: row.label ?? "once",
+    recurTime: row.recur_time ?? null,
+    templateId: row.template_id ?? null,
+    level: row.level ?? "III",
+  }));
+}
+
+export async function dbGetProducts() {
+  if (USE_LOCAL) return local.getProducts();
+
+  if (USE_GOOGLE_SHEETS) {
+    const result = await fetchGoogleSheets("getRecords", "qa_products");
+
+    return result.records
+      .sort((a, b) => (a.created_at ?? 0) - (b.created_at ?? 0))
+      .map(row => ({
+        id: row.id,
+        name: row.name,
+        description: row.description ?? "",
+        createdAt: row.created_at,
+      }));
+  }
+
+  const { data, error } = await supabase
+    .from("qa_products")
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+
+  return data.map(row => ({
+    id: row.id,
+    name: row.name,
+    description: row.description ?? "",
+    createdAt: row.created_at,
+  }));
+}
+
+export async function dbGetTickets() {
+  if (USE_LOCAL) return local.getTickets();
+
+  if (USE_GOOGLE_SHEETS) {
+    const result = await fetchGoogleSheets("getRecords", "qa_tickets");
+
+    return result.records
+      .sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0))
+      .map(row => ({
+        id: row.id,
+        title: row.title,
+        description: row.description ?? "",
+        status: row.status,
+        priority: row.priority,
+        productId: row.product_id ?? null,
+        productName: row.product_name ?? null,
+        reporter: row.reporter,
+        assignee: row.assignee ?? null,
+        images: row.images ?? [],
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        dueDate: row.due_date ?? null,
+        label: row.label ?? "once",
+        recurTime: row.recur_time ?? null,
+        templateId: row.template_id ?? null,
+        level: row.level ?? "III",
+      }));
+  }
+
+  const { data, error } = await supabase
+    .from("qa_tickets")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  return data.map(row => ({
+    id: row.id,
+    title: row.title,
+    description: row.description ?? "",
+    status: row.status,
+    priority: row.priority,
+    productId: row.product_id ?? null,
+    productName: row.product_name ?? null,
+    reporter: row.reporter,
+    assignee: row.assignee ?? null,
+    images: row.images ?? [],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    dueDate: row.due_date ?? null,
+    label: row.label ?? "once",
+    recurTime: row.recur_time ?? null,
+    templateId: row.template_id ?? null,
+    level: row.level ?? "III",
+  }));
 }
 
 export async function dbUpdateRole(username, role) {
@@ -289,6 +1012,47 @@ export async function dbUpdateUserProductRole(userId, productId, role) {
     .eq("product_id", productId);
   if (error) return { error: error.message };
   return { success: true };
+}
+
+export async function dbGetNotifications(username) {
+  if (USE_LOCAL) return local.getNotifications(username);
+
+  if (USE_GOOGLE_SHEETS) {
+    const result = await fetchGoogleSheets("getRecords", "qa_notifications");
+
+    return result.records
+      .filter(row => row.to_username === username)
+      .sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0))
+      .map(row => ({
+        id: row.id,
+        toUsername: row.to_username,
+        message: row.message,
+        type: row.type ?? null,
+        refId: row.ref_id ?? null,
+        refType: row.ref_type ?? null,
+        read: row.read ?? false,
+        createdAt: row.created_at,
+      }));
+  }
+
+  const { data, error } = await supabase
+    .from("qa_notifications")
+    .select("*")
+    .eq("to_username", username)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  return data.map(row => ({
+    id: row.id,
+    toUsername: row.to_username,
+    message: row.message,
+    type: row.type ?? null,
+    refId: row.ref_id ?? null,
+    refType: row.ref_type ?? null,
+    read: row.read,
+    createdAt: row.created_at,
+  }));
 }
 
 export async function dbAddUserProduct(userId, productId, role) {
@@ -499,16 +1263,63 @@ export async function dbGetSubmissionsForTicket(ticketId) {
 
 export async function dbAddSubmission(submission) {
   if (USE_LOCAL) return local.addSubmission(submission);
+
   if (USE_GOOGLE_SHEETS) {
-    const result = await fetchGoogleSheets('createRecord', 'qa_submissions', { recordData: submission });
+    const result = await fetchGoogleSheets(
+      "createRecord",
+      "qa_submissions",
+      { recordData: submission }
+    );
+
     if (result.success) {
-      return { success: true, submission: result.record };
+      return {
+        success: true,
+        submission: result.record,
+      };
     }
+
     return { error: "Failed to add submission." };
   }
-  const { data, error } = await supabase.from("qa_submissions").insert(submission).select().single();
+
+  const { data, error } = await supabase
+    .from("qa_submissions")
+    .insert(submission)
+    .select()
+    .single();
+
   if (error) return { error: error.message };
-  return { success: true, submission: data };
+
+  return {
+    success: true,
+    submission: data,
+  };
+}
+
+export async function dbDeleteSubmission(id) {
+  if (USE_LOCAL) return local.deleteSubmission(id);
+
+  if (USE_GOOGLE_SHEETS) {
+    const result = await fetchGoogleSheets(
+      "deleteRecord",
+      "qa_submissions",
+      { recordId: id }
+    );
+
+    if (result.success) {
+      return { success: true };
+    }
+
+    return { error: "Failed to delete submission." };
+  }
+
+  const { error } = await supabase
+    .from("qa_submissions")
+    .delete()
+    .eq("id", id);
+
+  if (error) return { error: error.message };
+
+  return { success: true };
 }
 
 // ── Notifications ─────────────────────────────────────────────────────────────
